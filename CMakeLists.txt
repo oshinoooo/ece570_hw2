@@ -4,4 +4,4 @@ project(test)
 
 set(CMAKE_CXX_STANDARD 14)
 
-add_executable(test src/thread.cc tests/test1.cc)
+add_executable(test src/pager.cc)
