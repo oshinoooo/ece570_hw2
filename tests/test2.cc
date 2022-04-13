@@ -1,8 +1,7 @@
 #include <iostream>
 #include <vector>
 
-#include "../src/vm_app.h"
-#include "../src/vm_pager.h"
+#include "vm_app.h"
 
 using namespace std;
 
