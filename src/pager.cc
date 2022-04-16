@@ -1,9 +1,15 @@
 #include <iostream>
 #include <vector>
+#include <map>
 
 #include "vm_pager.h"
 
 using namespace std;
+
+static unsigned int num_memory_pages;
+static unsigned int num_disk_blocks;
+
+static map<pid_t, page_table_t*> page_tables;
 
 /*
  * vm_init
@@ -16,7 +22,20 @@ using namespace std;
  * of disk blocks in the raw disk.
  */
 void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
+    num_memory_pages = memory_pages;
+    num_disk_blocks = disk_blocks;
 
+    pm_physmem = nullptr;
+    page_table_base_register = nullptr;
+
+    for (unsigned int i = 0; i < memory_pages; ++i) {
+        free_pages.push(i);
+    }
+
+    //init all free disk_blocks
+    for (unsigned int i = 0; i < disk_blocks; ++i) {
+        free_disk_blocks.push(i);
+    }
 }
 
 /*
@@ -28,7 +47,9 @@ void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
  * to via vm_switch().
  */
 void vm_create(pid_t pid) {
-
+    if (!page_tables.count(pid)) {
+        page_tables[pid] = new;
+    }
 }
 
 /*
@@ -119,4 +140,4 @@ void disk_write(unsigned int block, unsigned int ppage) {
  * Your pager accesses the data in physical memory through the variable
  * pm_physmem, e.g. ((char *)pm_physmem)[5] is byte 5 in physical memory.
  */
-void * pm_physmem;
+void* pm_physmem;
