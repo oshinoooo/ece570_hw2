@@ -6,12 +6,6 @@
 using namespace std;
 
 /*
- * ****************************************************
- * * Interface for student portion of Project 2 pager *
- * ****************************************************
- */
-
-/*
  * vm_init
  *
  * Called when the pager starts.  It should set up any internal data structures
@@ -21,7 +15,9 @@ using namespace std;
  * vm_init is passed both the number of physical memory pages and the number
  * of disk blocks in the raw disk.
  */
-void vm_init(unsigned int memory_pages, unsigned int disk_blocks);
+void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
+
+}
 
 /*
  * vm_create
@@ -31,7 +27,9 @@ void vm_init(unsigned int memory_pages, unsigned int disk_blocks);
  * your data structures.  The new process will only run when it's switched
  * to via vm_switch().
  */
-void vm_create(pid_t pid);
+void vm_create(pid_t pid) {
+
+}
 
 /*
  * vm_switch
@@ -40,7 +38,9 @@ void vm_create(pid_t pid);
  * identifier "pid".  This allows the pager to do any bookkeeping needed to
  * register the new process.
  */
-void vm_switch(pid_t pid);
+void vm_switch(pid_t pid) {
+
+}
 
 /*
  * vm_fault
@@ -49,7 +49,9 @@ void vm_switch(pid_t pid);
  * is true if the access that caused the fault is a write.
  * Should return 0 on success, -1 on failure.
  */
-int vm_fault(void *addr, bool write_flag);
+int vm_fault(void *addr, bool write_flag) {
+
+}
 
 /*
  * vm_destroy
@@ -57,7 +59,9 @@ int vm_fault(void *addr, bool write_flag);
  * Called when current process exits.  It should deallocate all resources
  * held by the current process (page table, physical pages, disk blocks, etc.)
  */
-void vm_destroy();
+void vm_destroy() {
+
+}
 
 /*
  * vm_extend
@@ -70,7 +74,9 @@ void vm_destroy();
  * vm_extend should return NULL on error, e.g., if the disk is out of swap
  * space.
  */
-void * vm_extend();
+void * vm_extend() {
+
+}
 
 /*
  * vm_syslog
@@ -80,31 +86,27 @@ void * vm_extend();
  *
  * Should return 0 on success, -1 on failure.
  */
-int vm_syslog(void *message, unsigned int len);
+int vm_syslog(void *message, unsigned int len) {
 
-
-/*
- * *********************************************
- * * Public interface for the disk abstraction *
- * *********************************************
- *
- * Disk blocks are numbered from 0 to (disk_blocks-1), where disk_blocks
- * is the parameter passed in vm_init().
- */
+}
 
 /*
  * disk_read
  *
  * read block "block" from the disk into physical memory page "ppage".
  */
-void disk_read(unsigned int block, unsigned int ppage);
+void disk_read(unsigned int block, unsigned int ppage) {
+
+}
 
 /*
  * disk_write
  *
  * write the contents of physical memory page "ppage" onto disk block "block".
  */
-void disk_write(unsigned int block, unsigned int ppage);
+void disk_write(unsigned int block, unsigned int ppage) {
+
+}
 
 /*
  * ********************************************************
