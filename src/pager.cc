@@ -153,13 +153,13 @@ void* vm_extend() {
 
     current_process->pages[current_process->top_valid_index] = p;
 
-    return (void *) ((unsigned long long) VM_ARENA_BASEADDR + current_process->top_valid_index * VM_PAGESIZE);
+    return (void*) ((unsigned long long) VM_ARENA_BASEADDR + current_process->top_valid_index * VM_PAGESIZE);
 }
 
 int vm_fault(void* addr, bool write_flag) {
     //error checking
     //outside of arena
-    if (((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) >= (current_process->top_valid_index+1)*VM_PAGESIZE) {
+    if (((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) >= (current_process->top_valid_index+1) * VM_PAGESIZE) {
         return -1;
     }
 
@@ -183,7 +183,7 @@ int vm_fault(void* addr, bool write_flag) {
 //                {
 //                    *(((char *)pm_physmem)+i+p->pte_ptr->ppage*VM_PAGESIZE) = 0;
 //                }
-                memset(((char *) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0,VM_PAGESIZE);
+                memset(((char*) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0,VM_PAGESIZE);
                 p->written_to = true;
             }
             else {
@@ -212,7 +212,7 @@ int vm_fault(void* addr, bool write_flag) {
 //                {
 //                    *(((char *)pm_physmem)+i+p->pte_ptr->ppage*VM_PAGESIZE) = 0;
 //                }
-                memset(((char *) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0,VM_PAGESIZE);
+                memset(((char*) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0,VM_PAGESIZE);
                 p->dirty = false;
             }
             else {
@@ -264,7 +264,7 @@ void vm_destroy() {
     page_table_base_register = nullptr;
 }
 
-int vm_syslog(void *message, unsigned int len) {
+int vm_syslog(void* message, unsigned int len) {
     //if not all of message is within the arena, return error
     //if len = 0, return error
     if (((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + len) >= (current_process->top_valid_index + 1) * VM_PAGESIZE ||
