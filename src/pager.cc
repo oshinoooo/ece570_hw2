@@ -25,8 +25,8 @@ struct process_info {
     int top_valid_index;
 };
 
-static unsigned int num_pages;
-static unsigned int num_blocks;
+static unsigned int num_memory_pages;
+static unsigned int num_disk_blocks;
 
 static stack<unsigned int> free_pages;
 static stack<unsigned int> free_disk_blocks;
@@ -83,9 +83,10 @@ static void remove(page* p) {
 }
 
 void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
-    num_pages = memory_pages;
-    num_blocks = disk_blocks;
+    num_memory_pages = memory_pages;
+    num_disk_blocks = disk_blocks;
 
+    pm_physmem = nullptr;
     page_table_base_register = nullptr;
 
     for (unsigned int i = 0; i < memory_pages; ++i)
