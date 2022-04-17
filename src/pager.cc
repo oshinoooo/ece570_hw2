@@ -25,19 +25,60 @@ struct process_info {
     int top_valid_index;
 };
 
-unsigned int num_pages;
-unsigned int num_blocks;
+static unsigned int num_pages;
+static unsigned int num_blocks;
 
-stack<unsigned int> free_pages;
-stack<unsigned int> free_disk_blocks;
+static stack<unsigned int> free_pages;
+static stack<unsigned int> free_disk_blocks;
 
-map<pid_t, process_info*> process_map;
+static map<pid_t, process_info*> page_tables;
+static queue<page*> clock_q;
 
-pid_t current_id;
-process_info* current_process;
-typedef map<pid_t, process_info*>::const_iterator process_iter;
+static pid_t current_id;
+static process_info* current_process;
 
-queue<page*> clock_q;
+static void evict() {
+    page* temp= clock_q.front();
+
+    assert(temp->valid);
+    while (temp->reference == true) {
+        temp->reference = false;
+        //reset read_enable so that the next read can be registered
+        temp->pte_ptr->read_enable = 0;
+        temp->pte_ptr->write_enable = 0;
+
+        clock_q.pop();
+        clock_q.push(temp);
+        temp=clock_q.front();
+
+    }
+    if(temp->dirty == true && temp->written_to == true)
+    {
+        disk_write(temp->disk_block,temp->pte_ptr->ppage);
+    }
+
+    //make page non-resident
+    temp->pte_ptr->read_enable=0;
+    temp->pte_ptr->write_enable=0;
+    temp->resident=false;
+
+    // add it back to the stack
+    free_pages.push(temp->pte_ptr->ppage);
+    clock_q.pop();
+}
+
+static void remove(page* p) {
+    page* rm=clock_q.front();
+    while (rm!=p) {
+        clock_q.pop();
+        clock_q.push(rm);
+        rm=clock_q.front();
+    }
+
+    //delete
+    clock_q.pop();
+    rm=NULL;
+}
 
 void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
     num_pages = memory_pages;
@@ -54,18 +95,20 @@ void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
 
 void vm_create(pid_t pid) {
     process_info* process = new process_info();
+
     //create page table
     process->ptbl_ptr = new page_table_t;
     process->pages = new page*[VM_ARENA_SIZE / VM_PAGESIZE];
+
     //initially no pte in page table is valid
     process->top_valid_index = -1;
 
-    process_map[pid]= process;
+    page_tables[pid] = process;
 }
 
 void vm_switch(pid_t pid) {
-    process_iter i = process_map.find(pid);
-    if (i != process_map.end()) {
+    map<pid_t, process_info*>::const_iterator i = page_tables.find(pid);
+    if (i != page_tables.end()) {
         current_id = pid;
         current_process = (*i).second;
         page_table_base_register = current_process->ptbl_ptr;
@@ -107,49 +150,6 @@ void* vm_extend() {
     current_process->pages[current_process->top_valid_index] = p;
 
     return (void *) ((unsigned long long) VM_ARENA_BASEADDR + current_process->top_valid_index * VM_PAGESIZE);
-}
-
-void evict() {
-    page* temp= clock_q.front();
-
-    assert(temp->valid);
-    while (temp->reference == true) {
-        temp->reference = false;
-        //reset read_enable so that the next read can be registered
-        temp->pte_ptr->read_enable = 0;
-        temp->pte_ptr->write_enable = 0;
-
-        clock_q.pop();
-        clock_q.push(temp);
-        temp=clock_q.front();
-
-    }
-    if(temp->dirty == true && temp->written_to == true)
-    {
-        disk_write(temp->disk_block,temp->pte_ptr->ppage);
-    }
-
-    //make page non-resident
-    temp->pte_ptr->read_enable=0;
-    temp->pte_ptr->write_enable=0;
-    temp->resident=false;
-
-    // add it back to the stack
-    free_pages.push(temp->pte_ptr->ppage);
-    clock_q.pop();
-}
-
-void remove(page* p) {
-    page* rm=clock_q.front();
-    while (rm!=p) {
-        clock_q.pop();
-        clock_q.push(rm);
-        rm=clock_q.front();
-    }
-
-    //delete
-    clock_q.pop();
-    rm=NULL;
 }
 
 int vm_fault(void *addr, bool write_flag) {
@@ -253,7 +253,7 @@ void vm_destroy() {
     //delete current_process->ptbl_ptr;
     //delete [] current_process->pages;
     delete current_process;
-    process_map.erase(current_id);
+    page_tables.erase(current_id);
 
     current_process=NULL;
     page_table_base_register=NULL;
