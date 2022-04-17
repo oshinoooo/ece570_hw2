@@ -25,34 +25,35 @@ struct process_info {
     int top_valid_index;
 };
 
-stack<unsigned int> free_pages;
-stack<unsigned int> free_disk_blocks;
-pid_t current_id;
-process_info* current_process;
-typedef map<pid_t, process_info*>::const_iterator process_iter;
-map<pid_t, process_info*> process_map;
-queue<page*> clock_q;
 unsigned int num_pages;
 unsigned int num_blocks;
 
+stack<unsigned int> free_pages;
+stack<unsigned int> free_disk_blocks;
+
+map<pid_t, process_info*> process_map;
+
+pid_t current_id;
+process_info* current_process;
+typedef map<pid_t, process_info*>::const_iterator process_iter;
+
+queue<page*> clock_q;
+
 void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
-    //Init all free physical pages
-    for (unsigned int i = 0; i <memory_pages; i++) {
+    num_pages = memory_pages;
+    num_blocks = disk_blocks;
+
+    page_table_base_register = nullptr;
+
+    for (int i = 0; i < memory_pages; ++i)
         free_pages.push(i);
-    }
-    //init all free disk_blocks
-    for (unsigned int i = 0; i <disk_blocks; i++) {
+
+    for (int i = 0; i < disk_blocks; ++i)
         free_disk_blocks.push(i);
-    }
-
-    page_table_base_register = NULL;
-
-    num_pages=memory_pages;
-    num_blocks=disk_blocks;
 }
 
 void vm_create(pid_t pid) {
-    process_info* process = new process_info;
+    process_info* process = new process_info();
     //create page table
     process->ptbl_ptr = new page_table_t;
     process->pages = new page*[VM_ARENA_SIZE / VM_PAGESIZE];

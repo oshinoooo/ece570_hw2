@@ -6,10 +6,29 @@
 
 using namespace std;
 
+struct page {
+    page_table_entry_t* pte_ptr;
+    bool written_to;
+    bool dirty;
+    bool resident;
+    bool reference;
+    bool valid;
+    unsigned int disk_block;
+};
+
+struct process_info {
+    page_table_t* ptbl_ptr;
+    page** pages;
+    int top_valid_index;
+};
+
 static unsigned int num_memory_pages;
 static unsigned int num_disk_blocks;
 
-static map<pid_t, page_table_t*> page_tables;
+stack<unsigned int> free_pages;
+stack<unsigned int> free_disk_blocks;
+
+static map<pid_t, process_info*> page_tables;
 
 /*
  * vm_init
@@ -28,14 +47,11 @@ void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
     pm_physmem = nullptr;
     page_table_base_register = nullptr;
 
-    for (unsigned int i = 0; i < memory_pages; ++i) {
+    for (int i = 0; i < num_memory_pages; ++i)
         free_pages.push(i);
-    }
 
-    //init all free disk_blocks
-    for (unsigned int i = 0; i < disk_blocks; ++i) {
+    for (int i = 0; i < num_disk_blocks; ++i)
         free_disk_blocks.push(i);
-    }
 }
 
 /*
@@ -47,9 +63,7 @@ void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
  * to via vm_switch().
  */
 void vm_create(pid_t pid) {
-    if (!page_tables.count(pid)) {
-        page_tables[pid] = new;
-    }
+
 }
 
 /*
