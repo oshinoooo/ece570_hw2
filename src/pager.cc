@@ -4,6 +4,7 @@
 #include <map>
 #include <assert.h>
 #include <cstring>
+#include <vector>
 
 #include "../src/vm_pager.h"
 
@@ -24,6 +25,8 @@ struct process_info {
     page** pages;
     int top_valid_index;
 };
+
+vector<page> disk();
 
 static unsigned int num_memory_pages;
 static unsigned int num_disk_blocks;
@@ -98,38 +101,30 @@ void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
 
 void vm_create(pid_t pid) {
     process_info* process = new process_info();
-
-    //create page table
     process->ptbl_ptr = new page_table_t;
     process->pages = new page*[VM_ARENA_SIZE / VM_PAGESIZE];
-
-    //initially no pte in page table is valid
     process->top_valid_index = -1;
-
     page_tables[pid] = process;
 }
 
 void vm_switch(pid_t pid) {
-    map<pid_t, process_info*>::const_iterator i = page_tables.find(pid);
-    if (i != page_tables.end()) {
+    if (page_tables.count(pid)) {
         current_id = pid;
-        current_process = (*i).second;
+        current_process = page_tables[pid];
         page_table_base_register = current_process->ptbl_ptr;
     }
 }
 
 void* vm_extend() {
-    //If top valid index is exceeds the bounds of the arena, return NULL
-    if ((current_process->top_valid_index+1) >= VM_ARENA_SIZE / VM_PAGESIZE) {
+    if ((current_process->top_valid_index + 1) >= VM_ARENA_SIZE / VM_PAGESIZE) {
         return nullptr;
     }
 
-    //If there are no free disk blocks, return nullptr (Eager allocation)
     if (free_disk_blocks.empty()) {
         return nullptr;
     }
 
-    current_process->top_valid_index++;
+    ++current_process->top_valid_index;
 
     page* p = new page;
 
@@ -279,12 +274,11 @@ int vm_syslog(void* message, unsigned int len) {
 
     for (unsigned int i = 0; i < len; ++i) {
         //get the virtual page number from the address
-        unsigned int page_num = ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + i) / VM_PAGESIZE;
+        unsigned int page_num    = ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + i) / VM_PAGESIZE;
         unsigned int page_offset = ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + i) % VM_PAGESIZE;
         unsigned int pf = page_table_base_register->ptes[page_num].ppage;
 
-        if (page_table_base_register->ptes[page_num].read_enable == 0
-            || current_process->pages[page_num]->resident==false) {
+        if (page_table_base_register->ptes[page_num].read_enable == 0 || current_process->pages[page_num]->resident==false) {
             if (vm_fault((void *) ((unsigned long long) message + i), false)) {
                 return -1;
             }
