@@ -12,12 +12,12 @@ using namespace std;
 
 struct page {
     page_table_entry_t* pte_ptr;
-//    bool written_to;
+    bool written_to;
     bool dirty;
     bool resident;
     bool reference;
     bool valid;
-//    unsigned int disk_block;
+    unsigned int disk_block;
 };
 
 struct process_info {
@@ -126,7 +126,7 @@ void* vm_extend() {
         return nullptr;
     }
 
-    ++current_process->top_valid_index;
+    current_process->top_valid_index++;
 
     page* p = new page;
 
@@ -206,10 +206,10 @@ int vm_fault(void* addr, bool write_flag) {
             free_pages.pop();
 
             if(!p->written_to) {
-//                for(unsigned int i = 0; i < VM_PAGESIZE;i++)
-//                {
+//                for(unsigned int i = 0; i < VM_PAGESIZE ; ++i) {
 //                    *(((char *)pm_physmem)+i+p->pte_ptr->ppage*VM_PAGESIZE) = 0;
 //                }
+
                 memset(((char*) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0,VM_PAGESIZE);
                 p->dirty = false;
             }
@@ -280,7 +280,7 @@ int vm_syslog(void* message, unsigned int len) {
         unsigned int page_offset = ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + i) % VM_PAGESIZE;
         unsigned int pf = page_table_base_register->ptes[page_num].ppage;
 
-        if (page_table_base_register->ptes[page_num].read_enable == 0 || current_process->pages[page_num]->resident==false) {
+        if (page_table_base_register->ptes[page_num].read_enable == 0 || !current_process->pages[page_num]->resident) {
             if (vm_fault((void *) ((unsigned long long) message + i), false)) {
                 return -1;
             }
