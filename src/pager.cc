@@ -12,12 +12,12 @@ using namespace std;
 
 struct page {
     page_table_entry_t* pte_ptr;
-    bool written_to;
+//    bool written_to;
     bool dirty;
     bool resident;
     bool reference;
     bool valid;
-    unsigned int disk_block;
+//    unsigned int disk_block;
 };
 
 struct process_info {
@@ -108,11 +108,13 @@ void vm_create(pid_t pid) {
 }
 
 void vm_switch(pid_t pid) {
-    if (page_tables.count(pid)) {
-        current_id = pid;
-        current_process = page_tables[pid];
-        page_table_base_register = current_process->ptbl_ptr;
+    if (!page_tables.count(pid)) {
+        return;
     }
+
+    current_id = pid;
+    current_process = page_tables[pid];
+    page_table_base_register = current_process->ptbl_ptr;
 }
 
 void* vm_extend() {
@@ -236,7 +238,7 @@ int vm_fault(void* addr, bool write_flag) {
 }
 
 void vm_destroy() {
-    for (unsigned int i = 0; i <=current_process->top_valid_index; i++) {
+    for (unsigned int i = 0; i <= current_process->top_valid_index; ++i) {
         page* p = current_process->pages[i];
 
         //if page in physmem
