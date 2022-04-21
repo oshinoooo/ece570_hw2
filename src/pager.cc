@@ -32,14 +32,14 @@ static unsigned int num_disk_blocks;
 static stack<unsigned int> free_pages;
 static stack<unsigned int> free_disk_blocks;
 
-static map<pid_t, process_info*> page_tables;
+static map<pid_t, process_info*> process_map;
 static queue<page*> clock_q;
 
 static pid_t current_id;
 static process_info* current_process;
 
 static void evict() {
-    page* temp= clock_q.front();
+    page* temp = clock_q.front();
 
     assert(temp->valid);
 
@@ -70,12 +70,12 @@ static void evict() {
 }
 
 static void remove(page* p) {
-    page* rm=clock_q.front();
+    page* rm = clock_q.front();
 
-    while (rm!=p) {
+    while (rm != p) {
         clock_q.pop();
         clock_q.push(rm);
-        rm=clock_q.front();
+        rm = clock_q.front();
     }
 
     //delete
@@ -90,11 +90,13 @@ void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
     pm_physmem = nullptr;
     page_table_base_register = nullptr;
 
-    for (unsigned int i = 0; i < memory_pages; ++i)
+    for (unsigned int i = 0; i < memory_pages; ++i) {
         free_pages.push(i);
+    }
 
-    for (unsigned int i = 0; i < disk_blocks; ++i)
+    for (unsigned int i = 0; i < disk_blocks; ++i) {
         free_disk_blocks.push(i);
+    }
 }
 
 void vm_create(pid_t pid) {
@@ -102,16 +104,16 @@ void vm_create(pid_t pid) {
     process->ptbl_ptr = new page_table_t;
     process->pages = new page*[VM_ARENA_SIZE / VM_PAGESIZE];
     process->top_valid_index = -1;
-    page_tables[pid] = process;
+    process_map[pid] = process;
 }
 
 void vm_switch(pid_t pid) {
-    if (!page_tables.count(pid)) {
+    if (!process_map.count(pid)) {
         return;
     }
 
     current_id = pid;
-    current_process = page_tables[pid];
+    current_process = process_map[pid];
     page_table_base_register = current_process->ptbl_ptr;
 }
 
@@ -149,7 +151,7 @@ void* vm_extend() {
 
     current_process->pages[current_process->top_valid_index] = p;
 
-    return (void*) ((unsigned long long) VM_ARENA_BASEADDR + current_process->top_valid_index * VM_PAGESIZE);
+    return (void*)((unsigned long long)VM_ARENA_BASEADDR + current_process->top_valid_index * VM_PAGESIZE);
 }
 
 int vm_fault(void* addr, bool write_flag) {
@@ -206,7 +208,7 @@ int vm_fault(void* addr, bool write_flag) {
 //                for(unsigned int i = 0; i < VM_PAGESIZE; ++i) {
 //                    *(((char *)pm_physmem)+i+p->pte_ptr->ppage*VM_PAGESIZE) = 0;
 //                }
-                memset(((char*) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0,VM_PAGESIZE);
+                memset(((char*) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
                 p->dirty = false;
             }
             else {
@@ -252,7 +254,7 @@ void vm_destroy() {
     //delete current_process->ptbl_ptr;
     //delete [] current_process->pages;
     delete current_process;
-    page_tables.erase(current_id);
+    process_map.erase(current_id);
 
     current_process = nullptr;
     page_table_base_register = nullptr;
