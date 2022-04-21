@@ -1,10 +1,10 @@
 #include <iostream>
+
 #include "vm_app.h"
 
 using namespace std;
 
-int main()
-{
+int main() {
     vm_extend();
     vm_extend();
     char *a;
