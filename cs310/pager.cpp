@@ -25,88 +25,17 @@ struct process_info {
     int top_valid_index;
 };
 
-stack<unsigned int> free_pages;
-stack<unsigned int> free_disk_blocks;
+static unsigned int num_pages;
+static unsigned int num_blocks;
 
-pid_t current_id;
-process_info* current_process;
+static stack<unsigned int> free_pages;
+static stack<unsigned int> free_disk_blocks;
 
-typedef map<pid_t, process_info*>::const_iterator process_iter;
-map<pid_t, process_info*> process_map;
+static pid_t current_id;
+static process_info* current_process;
 
-queue<page*> clock_q;
-
-unsigned int num_pages;
-unsigned int num_blocks;
-
-void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
-    for (unsigned int i = 0; i < memory_pages; i++) {
-        free_pages.push(i);
-    }
-
-    for (unsigned int i = 0; i < disk_blocks; i++) {
-        free_disk_blocks.push(i);
-    }
-
-    page_table_base_register = nullptr;
-
-    num_pages=memory_pages;
-    num_blocks=disk_blocks;
-}
-
-void vm_create(pid_t pid) {
-    process_info* process = new process_info;
-    process->ptbl_ptr = new page_table_t;
-    process->pages = new page*[VM_ARENA_SIZE / VM_PAGESIZE];
-    process->top_valid_index = -1;
-    process_map[pid]= process;
-}
-
-void vm_switch(pid_t pid) {
-    process_iter i = process_map.find(pid);
-    if (i != process_map.end()) {
-        current_id = pid;
-        current_process = (*i).second;
-        page_table_base_register = current_process->ptbl_ptr;
-    }
-}
-
-void* vm_extend() {
-    if ((current_process->top_valid_index+1) >= VM_ARENA_SIZE / VM_PAGESIZE) {
-        return nullptr;
-    }
-
-    if (free_disk_blocks.empty()) {
-        return nullptr;
-    }
-
-    current_process->top_valid_index++;
-
-    page* p = new page;
-
-    //init virtual pages
-    p->pte_ptr = &(page_table_base_register->ptes[current_process->top_valid_index]);
-
-    //allocate disk_block
-    p->disk_block = free_disk_blocks.top();
-    free_disk_blocks.pop();
-
-    //make non-resident
-    p->pte_ptr->read_enable = 0;
-    p->pte_ptr->write_enable = 0;
-
-    p->reference = false;
-    p->resident = false;
-    p->written_to = false;
-    p->valid = true;
-    p->dirty = false;
-
-    //PF and disk block allocation delayed to vm_fault
-
-    current_process->pages[current_process->top_valid_index] = p;
-
-    return (void *) ((unsigned long long) VM_ARENA_BASEADDR + current_process->top_valid_index * VM_PAGESIZE);
-}
+static map<pid_t, process_info*> process_map;
+static queue<page*> clock_q;
 
 void evict() {
     page* temp= clock_q.front();
@@ -149,6 +78,76 @@ void remove(page* p) {
 
     clock_q.pop();
     rm = nullptr;
+}
+
+void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
+    for (unsigned int i = 0; i < memory_pages; i++) {
+        free_pages.push(i);
+    }
+
+    for (unsigned int i = 0; i < disk_blocks; i++) {
+        free_disk_blocks.push(i);
+    }
+
+    page_table_base_register = nullptr;
+
+    num_pages=memory_pages;
+    num_blocks=disk_blocks;
+}
+
+void vm_create(pid_t pid) {
+    process_info* process = new process_info;
+    process->ptbl_ptr = new page_table_t;
+    process->pages = new page*[VM_ARENA_SIZE / VM_PAGESIZE];
+    process->top_valid_index = -1;
+    process_map[pid]= process;
+}
+
+void vm_switch(pid_t pid) {
+    if (!process_map.count(pid)) {
+        return;
+    }
+
+    current_id = pid;
+    current_process = process_map[pid];
+    page_table_base_register = current_process->ptbl_ptr;
+}
+
+void* vm_extend() {
+    if ((current_process->top_valid_index+1) >= VM_ARENA_SIZE / VM_PAGESIZE) {
+        return nullptr;
+    }
+
+    if (free_disk_blocks.empty()) {
+        return nullptr;
+    }
+
+    current_process->top_valid_index++;
+
+    page* p = new page;
+
+    //init virtual pages
+    p->pte_ptr = &(page_table_base_register->ptes[current_process->top_valid_index]);
+
+    //allocate disk_block
+    p->disk_block = free_disk_blocks.top();
+    free_disk_blocks.pop();
+
+    //make non-resident
+    p->pte_ptr->read_enable = 0;
+    p->pte_ptr->write_enable = 0;
+
+    p->reference = false;
+    p->resident = false;
+    p->written_to = false;
+    p->valid = true;
+    p->dirty = false;
+
+    //PF and disk block allocation delayed to vm_fault
+
+    current_process->pages[current_process->top_valid_index] = p;
+
+    return (void *) ((unsigned long long) VM_ARENA_BASEADDR + current_process->top_valid_index * VM_PAGESIZE);
 }
 
 int vm_fault(void *addr, bool write_flag) {
