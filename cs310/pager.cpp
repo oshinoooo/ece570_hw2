@@ -4,6 +4,7 @@
 #include <map>
 #include <assert.h>
 #include <cstring>
+#include <vector>
 
 #include "../src/vm_pager.h"
 
@@ -25,22 +26,23 @@ struct process_info {
     int top_valid_index;
 };
 
-static unsigned int num_pages;
-static unsigned int num_blocks;
+static unsigned int num_memory_pages;
+static unsigned int num_disk_blocks;
 
 static stack<unsigned int> free_pages;
 static stack<unsigned int> free_disk_blocks;
 
-static pid_t current_id;
-static process_info* current_process;
-
 static map<pid_t, process_info*> process_map;
 static queue<page*> clock_q;
 
-void evict() {
+static pid_t current_id;
+static process_info* current_process;
+
+static void evict() {
     page* temp = clock_q.front();
 
     assert(temp->valid);
+
     while (temp->reference) {
         temp->reference = false;
         //reset read_enable so that the next read can be registered
@@ -67,7 +69,7 @@ void evict() {
     clock_q.pop();
 }
 
-void remove(page* p) {
+static void remove(page* p) {
     page* rm = clock_q.front();
 
     while (rm != p) {
@@ -76,27 +78,29 @@ void remove(page* p) {
         rm = clock_q.front();
     }
 
+    //delete
     clock_q.pop();
     rm = nullptr;
 }
 
 void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
-    for (unsigned int i = 0; i < memory_pages; i++) {
+    num_memory_pages = memory_pages;
+    num_disk_blocks = disk_blocks;
+
+    pm_physmem = nullptr;
+    page_table_base_register = nullptr;
+
+    for (unsigned int i = 0; i < memory_pages; ++i) {
         free_pages.push(i);
     }
 
-    for (unsigned int i = 0; i < disk_blocks; i++) {
+    for (unsigned int i = 0; i < disk_blocks; ++i) {
         free_disk_blocks.push(i);
     }
-
-    page_table_base_register = nullptr;
-
-    num_pages = memory_pages;
-    num_blocks = disk_blocks;
 }
 
 void vm_create(pid_t pid) {
-    process_info* process = new process_info;
+    process_info* process = new process_info();
     process->ptbl_ptr = new page_table_t;
     process->pages = new page*[VM_ARENA_SIZE / VM_PAGESIZE];
     process->top_valid_index = -1;
@@ -114,7 +118,7 @@ void vm_switch(pid_t pid) {
 }
 
 void* vm_extend() {
-    if ((current_process->top_valid_index+1) >= VM_ARENA_SIZE / VM_PAGESIZE) {
+    if ((current_process->top_valid_index + 1) >= VM_ARENA_SIZE / VM_PAGESIZE) {
         return nullptr;
     }
 
@@ -173,10 +177,10 @@ int vm_fault(void* addr, bool write_flag) {
             free_pages.pop();
 
             if(!p->written_to) {
-//                for(unsigned int i = 0; i < VM_PAGESIZE; i++) {
+//                for(unsigned int i = 0; i < VM_PAGESIZE; ++i) {
 //                    *(((char *)pm_physmem)+i+p->pte_ptr->ppage*VM_PAGESIZE) = 0;
 //                }
-                memset(((char *) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                memset(((char*) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
                 p->written_to = true;
             }
             else {
@@ -201,16 +205,17 @@ int vm_fault(void* addr, bool write_flag) {
             free_pages.pop();
 
             if(!p->written_to) {
-//                for(unsigned int i = 0; i < VM_PAGESIZE; i++) {
+//                for(unsigned int i = 0; i < VM_PAGESIZE; ++i) {
 //                    *(((char *)pm_physmem)+i+p->pte_ptr->ppage*VM_PAGESIZE) = 0;
 //                }
-                memset(((char *) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                memset(((char*) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
                 p->dirty = false;
             }
             else {
                 disk_read(p->disk_block, p->pte_ptr->ppage);
                 p->dirty = false;
             }
+
             clock_q.push(p);
             p->resident = true;
         }
@@ -221,15 +226,17 @@ int vm_fault(void* addr, bool write_flag) {
         else {
             p->pte_ptr->write_enable = 0;
         }
+
         p->pte_ptr->read_enable = 1;
         p->reference = true;
     }
+
     p = nullptr;
     return 0;
 }
 
 void vm_destroy() {
-    for (unsigned int i = 0; i <= current_process->top_valid_index; i++) {
+    for (unsigned int i = 0; i <= current_process->top_valid_index; ++i) {
         page* p = current_process->pages[i];
 
         //if page in physmem
@@ -253,27 +260,29 @@ void vm_destroy() {
     page_table_base_register = nullptr;
 }
 
-int vm_syslog(void *message, unsigned int len) {
+int vm_syslog(void* message, unsigned int len) {
     //if not all of message is within the arena, return error
     //if len = 0, return error
     if (((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + len) >= (current_process->top_valid_index + 1) * VM_PAGESIZE ||
         ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR) >= (current_process->top_valid_index + 1) * VM_PAGESIZE ||
-        ((unsigned long long) message < (unsigned long long) VM_ARENA_BASEADDR) || len <= 0) {
+        ((unsigned long long) message < (unsigned long long) VM_ARENA_BASEADDR) ||
+        len <= 0) {
         return -1;
     }
 
     string s;
 
-    for (unsigned int i = 0; i < len; i++) {
+    for (unsigned int i = 0; i < len; ++i) {
         //get the virtual page number from the address
-        unsigned int page_num = ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + i) / VM_PAGESIZE;
+        unsigned int page_num    = ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + i) / VM_PAGESIZE;
         unsigned int page_offset = ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + i) % VM_PAGESIZE;
         unsigned int pf = page_table_base_register->ptes[page_num].ppage;
 
-        if (page_table_base_register->ptes[page_num].read_enable == 0 || current_process->pages[page_num]->resident==false) {
+        if (page_table_base_register->ptes[page_num].read_enable == 0 || !current_process->pages[page_num]->resident) {
             if (vm_fault((void *) ((unsigned long long) message + i), false)) {
                 return -1;
             }
+
             pf = page_table_base_register->ptes[page_num].ppage;
         }
 
