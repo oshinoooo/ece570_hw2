@@ -87,7 +87,7 @@ void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
     num_memory_pages = memory_pages;
     num_disk_blocks = disk_blocks;
 
-    pm_physmem = nullptr;
+//    pm_physmem = nullptr;
     page_table_base_register = nullptr;
 
     for (unsigned int i = 0; i < memory_pages; ++i) {
