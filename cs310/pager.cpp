@@ -107,8 +107,9 @@ void vm_create(pid_t pid) {
 }
 
 void vm_switch(pid_t pid) {
-    if (!page_tables.count(pid))
+    if (!page_tables.count(pid)) {
         return;
+    }
 
     current_id = pid;
     current_process = page_tables[pid];
@@ -175,8 +176,7 @@ int vm_fault(void* addr, bool write_flag) {
             free_pages.pop();
 
             if(!p->written_to) {
-//                for(unsigned int i = 0; i < VM_PAGESIZE;i++)
-//                {
+//                for(unsigned int i = 0; i < VM_PAGESIZE; ++i) {
 //                    *(((char *)pm_physmem)+i+p->pte_ptr->ppage*VM_PAGESIZE) = 0;
 //                }
                 memset(((char*) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
@@ -204,8 +204,7 @@ int vm_fault(void* addr, bool write_flag) {
             free_pages.pop();
 
             if(!p->written_to) {
-//                for(unsigned int i = 0; i < VM_PAGESIZE;i++)
-//                {
+//                for(unsigned int i = 0; i < VM_PAGESIZE; ++i) {
 //                    *(((char *)pm_physmem)+i+p->pte_ptr->ppage*VM_PAGESIZE) = 0;
 //                }
                 memset(((char*) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0,VM_PAGESIZE);
@@ -278,7 +277,7 @@ int vm_syslog(void* message, unsigned int len) {
         unsigned int page_offset = ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + i) % VM_PAGESIZE;
         unsigned int pf = page_table_base_register->ptes[page_num].ppage;
 
-        if (page_table_base_register->ptes[page_num].read_enable == 0 || current_process->pages[page_num]->resident==false) {
+        if (page_table_base_register->ptes[page_num].read_enable == 0 || !current_process->pages[page_num]->resident) {
             if (vm_fault((void *) ((unsigned long long) message + i), false)) {
                 return -1;
             }
