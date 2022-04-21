@@ -38,7 +38,7 @@ static map<pid_t, process_info*> process_map;
 static queue<page*> clock_q;
 
 void evict() {
-    page* temp= clock_q.front();
+    page* temp = clock_q.front();
 
     assert(temp->valid);
     while (temp->reference) {
@@ -58,8 +58,8 @@ void evict() {
     }
 
     //make page non-resident
-    temp->pte_ptr->read_enable=0;
-    temp->pte_ptr->write_enable=0;
+    temp->pte_ptr->read_enable = 0;
+    temp->pte_ptr->write_enable = 0;
     temp->resident = false;
 
     // add it back to the stack
@@ -73,7 +73,7 @@ void remove(page* p) {
     while (rm != p) {
         clock_q.pop();
         clock_q.push(rm);
-        rm=clock_q.front();
+        rm = clock_q.front();
     }
 
     clock_q.pop();
@@ -91,8 +91,8 @@ void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
 
     page_table_base_register = nullptr;
 
-    num_pages=memory_pages;
-    num_blocks=disk_blocks;
+    num_pages = memory_pages;
+    num_blocks = disk_blocks;
 }
 
 void vm_create(pid_t pid) {
@@ -100,7 +100,7 @@ void vm_create(pid_t pid) {
     process->ptbl_ptr = new page_table_t;
     process->pages = new page*[VM_ARENA_SIZE / VM_PAGESIZE];
     process->top_valid_index = -1;
-    process_map[pid]= process;
+    process_map[pid] = process;
 }
 
 void vm_switch(pid_t pid) {
@@ -147,14 +147,15 @@ void* vm_extend() {
 
     current_process->pages[current_process->top_valid_index] = p;
 
-    return (void *) ((unsigned long long) VM_ARENA_BASEADDR + current_process->top_valid_index * VM_PAGESIZE);
+    return (void*)((unsigned long long)VM_ARENA_BASEADDR + current_process->top_valid_index * VM_PAGESIZE);
 }
 
-int vm_fault(void *addr, bool write_flag) {
+int vm_fault(void* addr, bool write_flag) {
     //error checking
     //outside of arena
-    if (((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) >= (current_process->top_valid_index+1)*VM_PAGESIZE)
+    if (((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) >= (current_process->top_valid_index+1) * VM_PAGESIZE) {
         return -1;
+    }
 
     //page number
     page* p = current_process->pages[((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) / VM_PAGESIZE];
@@ -167,6 +168,7 @@ int vm_fault(void *addr, bool write_flag) {
             if (free_pages.empty()) {
                 evict();
             }
+
             p->pte_ptr->ppage = free_pages.top();
             free_pages.pop();
 
@@ -174,7 +176,7 @@ int vm_fault(void *addr, bool write_flag) {
 //                for(unsigned int i = 0; i < VM_PAGESIZE; i++) {
 //                    *(((char *)pm_physmem)+i+p->pte_ptr->ppage*VM_PAGESIZE) = 0;
 //                }
-                memset(((char *) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0,VM_PAGESIZE);
+                memset(((char *) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
                 p->written_to = true;
             }
             else {
@@ -202,7 +204,7 @@ int vm_fault(void *addr, bool write_flag) {
 //                for(unsigned int i = 0; i < VM_PAGESIZE; i++) {
 //                    *(((char *)pm_physmem)+i+p->pte_ptr->ppage*VM_PAGESIZE) = 0;
 //                }
-                memset(((char *) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0,VM_PAGESIZE);
+                memset(((char *) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
                 p->dirty = false;
             }
             else {
@@ -227,18 +229,21 @@ int vm_fault(void *addr, bool write_flag) {
 }
 
 void vm_destroy() {
-    for (unsigned int i = 0; i <=current_process->top_valid_index; i++) {
+    for (unsigned int i = 0; i <= current_process->top_valid_index; i++) {
         page* p = current_process->pages[i];
+
         //if page in physmem
         if (p->resident) {
             free_pages.push(p->pte_ptr->ppage);
             remove(p);
         }
+
         free_disk_blocks.push(p->disk_block);
         p->valid = false;
         delete p;
         p = nullptr;
     }
+
     //delete current_process->ptbl_ptr;
     //delete [] current_process->pages;
     delete current_process;
@@ -264,15 +269,18 @@ int vm_syslog(void *message, unsigned int len) {
         unsigned int page_num = ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + i) / VM_PAGESIZE;
         unsigned int page_offset = ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + i) % VM_PAGESIZE;
         unsigned int pf = page_table_base_register->ptes[page_num].ppage;
+
         if (page_table_base_register->ptes[page_num].read_enable == 0 || current_process->pages[page_num]->resident==false) {
             if (vm_fault((void *) ((unsigned long long) message + i), false)) {
                 return -1;
             }
             pf = page_table_base_register->ptes[page_num].ppage;
         }
+
         current_process->pages[page_num]->reference = true;
         s.append((char *)pm_physmem+pf * VM_PAGESIZE+ page_offset,1);
     }
+
     cout << "syslog\t\t\t" << s << endl;
     return 0;
 }
