@@ -155,13 +155,10 @@ void* vm_extend() {
 }
 
 int vm_fault(void* addr, bool write_flag) {
-    //error checking
-    //outside of arena
-    if (((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) >= (current_process->top_valid_index+1) * VM_PAGESIZE) {
+    if (((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) >= (current_process->top_valid_index + 1) * VM_PAGESIZE) {
         return -1;
     }
 
-    //page number
     page* p = current_process->pages[((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) / VM_PAGESIZE];
 
     p->reference = true;
@@ -177,10 +174,7 @@ int vm_fault(void* addr, bool write_flag) {
             free_pages.pop();
 
             if(!p->written_to) {
-//                for(unsigned int i = 0; i < VM_PAGESIZE; ++i) {
-//                    *(((char *)pm_physmem)+i+p->pte_ptr->ppage*VM_PAGESIZE) = 0;
-//                }
-                memset(((char*) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                memset((char*)pm_physmem + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
                 p->written_to = true;
             }
             else {
@@ -205,10 +199,7 @@ int vm_fault(void* addr, bool write_flag) {
             free_pages.pop();
 
             if(!p->written_to) {
-//                for(unsigned int i = 0; i < VM_PAGESIZE; ++i) {
-//                    *(((char *)pm_physmem)+i+p->pte_ptr->ppage*VM_PAGESIZE) = 0;
-//                }
-                memset(((char*) pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                memset((char*)pm_physmem + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
                 p->dirty = false;
             }
             else {
@@ -231,7 +222,7 @@ int vm_fault(void* addr, bool write_flag) {
         p->reference = true;
     }
 
-    p = nullptr;
+//    p = nullptr;
     return 0;
 }
 
