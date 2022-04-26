@@ -1,6 +1,6 @@
 #!/bin/bash
 
-submit570 2 ./src/pager.cc ./tests/*
+submit570 2 ./src/pager.cc ./tests/test*
 
 g++ -m32 -I./src ./cs310/pager.cpp lib/libvm_pager.a -o pager
 g++ -m32 -I./src ./src/pager.cc lib/libvm_pager.a -o pager
