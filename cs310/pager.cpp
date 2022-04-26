@@ -51,12 +51,11 @@ static void evict() {
 
         clock_q.pop();
         clock_q.push(temp);
-        temp=clock_q.front();
-
+        temp = clock_q.front();
     }
 
     if(temp->dirty && temp->written_to) {
-        disk_write(temp->disk_block,temp->pte_ptr->ppage);
+        disk_write(temp->disk_block, temp->pte_ptr->ppage);
     }
 
     //make page non-resident
@@ -254,9 +253,9 @@ void vm_destroy() {
 int vm_syslog(void* message, unsigned int len) {
     //if not all of message is within the arena, return error
     //if len = 0, return error
-    if (((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + len) >= (current_process->top_valid_index + 1) * VM_PAGESIZE ||
-        ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR) >= (current_process->top_valid_index + 1) * VM_PAGESIZE ||
-        ((unsigned long long) message < (unsigned long long) VM_ARENA_BASEADDR) ||
+    if (((unsigned long long)message + len >= (current_process->top_valid_index + 1) * VM_PAGESIZE + (unsigned long long)VM_ARENA_BASEADDR) ||
+        ((unsigned long long)message       >= (current_process->top_valid_index + 1) * VM_PAGESIZE + (unsigned long long)VM_ARENA_BASEADDR) ||
+        ((unsigned long long)message       < (unsigned long long)VM_ARENA_BASEADDR) ||
         len <= 0) {
         return -1;
     }
@@ -270,7 +269,7 @@ int vm_syslog(void* message, unsigned int len) {
         unsigned int pf = page_table_base_register->ptes[page_num].ppage;
 
         if (page_table_base_register->ptes[page_num].read_enable == 0 || !current_process->pages[page_num]->resident) {
-            if (vm_fault((void *) ((unsigned long long) message + i), false)) {
+            if (vm_fault((void*)((unsigned long long)message + i), false)) {
                 return -1;
             }
 
@@ -278,7 +277,7 @@ int vm_syslog(void* message, unsigned int len) {
         }
 
         current_process->pages[page_num]->reference = true;
-        s.append((char *)pm_physmem+pf * VM_PAGESIZE+ page_offset,1);
+        s.append((char*)pm_physmem+pf * VM_PAGESIZE + page_offset, 1);
     }
 
     cout << "syslog\t\t\t" << s << endl;
