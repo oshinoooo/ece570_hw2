@@ -3,21 +3,9 @@
 #include <map>
 #include <cstring>
 
-#include "../src/vm_pager.h"
+#include "vm_pager.h"
 
 using namespace std;
-
-/*
-struct page_table_entry_t {
-    unsigned long ppage : 20;
-    unsigned int read_enable : 1;
-    unsigned int write_enable : 1;
-};
-
-struct page_table_t {
-    page_table_entry_t ptes[VM_ARENA_SIZE / VM_PAGESIZE];
-};
-*/
 
 struct page_status_table_entry_t {
     bool valid;
