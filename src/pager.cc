@@ -254,13 +254,12 @@ int vm_syslog(void* message, unsigned int len) {
     unsigned long long top_address = (top_index + 1) * VM_PAGESIZE + (unsigned long long)VM_ARENA_BASEADDR;
 
     if (((unsigned long long)message < (unsigned long long)VM_ARENA_BASEADDR) ||
-        ((unsigned long long)message >= top_address - len) ||
-        ((unsigned long long)message >= top_address) ||
+        (top_address <= (unsigned long long)message + len) ||
         len <= 0) {
         return -1;
     }
 
-    string s = "";
+    string s;
 
     for (unsigned int i = 0; i < len; ++i) {
         unsigned int page_number = ((unsigned long long)message - (unsigned long long)VM_ARENA_BASEADDR + i) / VM_PAGESIZE;
@@ -271,7 +270,7 @@ int vm_syslog(void* message, unsigned int len) {
 
         unsigned int physical_page = page_entry->ppage;
 
-        if (page_entry->read_enable == 0 || !(page_status_entry->resident)) {
+        if (page_entry->read_enable == 0 || !page_status_entry->resident) {
             if (vm_fault((void*)((unsigned long long)message + i), false)) {
                 return -1;
             }
@@ -283,6 +282,6 @@ int vm_syslog(void* message, unsigned int len) {
         s.push_back(*((char*)pm_physmem + physical_page * VM_PAGESIZE + page_offset));
     }
 
-    cout << "syslog\t\t\t" << s << endl;
+    cout << "syslog \t\t\t" << s << endl;
     return 0;
 }
