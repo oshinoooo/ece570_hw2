@@ -279,7 +279,7 @@ int vm_syslog(void* message, unsigned int len) {
         }
 
         page_status_entry->reference = true;
-        s.push_back(*((char*)pm_physmem + physical_page * VM_PAGESIZE + page_offset));
+        s.append((char*)pm_physmem + physical_page * VM_PAGESIZE + page_offset, 1);
     }
 
     cout << "syslog \t\t\t" << s << endl;
