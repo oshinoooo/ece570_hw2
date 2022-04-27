@@ -4,7 +4,6 @@
 #include <map>
 #include <assert.h>
 #include <cstring>
-#include <vector>
 
 #include "../src/vm_pager.h"
 
@@ -85,8 +84,6 @@ static void remove(page* p) {
 void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
     num_memory_pages = memory_pages;
     num_disk_blocks = disk_blocks;
-
-//    pm_physmem = nullptr;
     page_table_base_register = nullptr;
 
     for (unsigned int i = 0; i < memory_pages; ++i) {
@@ -251,11 +248,11 @@ void vm_destroy() {
 }
 
 int vm_syslog(void* message, unsigned int len) {
-    //if not all of message is within the arena, return error
-    //if len = 0, return error
-    if (((unsigned long long)message + len >= (current_process->top_valid_index + 1) * VM_PAGESIZE + (unsigned long long)VM_ARENA_BASEADDR) ||
-        ((unsigned long long)message       >= (current_process->top_valid_index + 1) * VM_PAGESIZE + (unsigned long long)VM_ARENA_BASEADDR) ||
-        ((unsigned long long)message       < (unsigned long long)VM_ARENA_BASEADDR) ||
+    unsigned long long top_address = (current_process->top_valid_index + 1) * VM_PAGESIZE + (unsigned long long)VM_ARENA_BASEADDR;
+
+    if (((unsigned long long)message >= top_address - len) ||
+        ((unsigned long long)message >= top_address) ||
+        ((unsigned long long)message < (unsigned long long)VM_ARENA_BASEADDR) ||
         len <= 0) {
         return -1;
     }
@@ -264,8 +261,8 @@ int vm_syslog(void* message, unsigned int len) {
 
     for (unsigned int i = 0; i < len; ++i) {
         //get the virtual page number from the address
-        unsigned int page_num    = ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + i) / VM_PAGESIZE;
-        unsigned int page_offset = ((unsigned long long) message - (unsigned long long) VM_ARENA_BASEADDR + i) % VM_PAGESIZE;
+        unsigned int page_num    = ((unsigned long long)message - (unsigned long long)VM_ARENA_BASEADDR + i) / VM_PAGESIZE;
+        unsigned int page_offset = ((unsigned long long)message - (unsigned long long)VM_ARENA_BASEADDR + i) % VM_PAGESIZE;
         unsigned int pf = page_table_base_register->ptes[page_num].ppage;
 
         if (page_table_base_register->ptes[page_num].read_enable == 0 || !current_process->pages[page_num]->resident) {
@@ -277,7 +274,7 @@ int vm_syslog(void* message, unsigned int len) {
         }
 
         current_process->pages[page_num]->reference = true;
-        s.append((char*)pm_physmem+pf * VM_PAGESIZE + page_offset, 1);
+        s.append((char*)pm_physmem + pf * VM_PAGESIZE + page_offset, 1);
     }
 
     cout << "syslog\t\t\t" << s << endl;
