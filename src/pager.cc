@@ -15,7 +15,7 @@ struct page_status_table_entry_t {
     bool written_to;
     unsigned int disk_block;
 
-    page_status_table_entry_t() : valid(false), dirty(false), resident(false), reference(false), written_to(false), disk_block(-1) {}
+    page_status_table_entry_t() : valid(false), dirty(false), resident(false), reference(false), written_to(false), disk_block(0) {}
 };
 
 struct page_status_table_t {
@@ -42,7 +42,7 @@ static queue<unsigned int> free_memory_pages;
 static queue<unsigned int> free_disk_blocks;
 static queue<pair<process_information*, unsigned int>> my_clock;
 
-static void evict() {
+static void swap_out() {
     process_information* pi = my_clock.front().first;
     unsigned int index = my_clock.front().second;
     page_status_table_entry_t* page_status_entry = &pi->page_status_table.pstes[index];
@@ -143,7 +143,7 @@ int vm_fault(void* addr, bool write_flag) {
         return -1;
     }
 
-    int cur_index = ((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) / VM_PAGESIZE;
+    unsigned long long cur_index = ((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) / VM_PAGESIZE;
     page_status_table_entry_t* page_status_entry = &running_process_information->page_status_table.pstes[cur_index];
     page_table_entry_t* page_entry = &running_process_information->page_table.ptes[cur_index];
 
@@ -152,18 +152,18 @@ int vm_fault(void* addr, bool write_flag) {
     if (write_flag) {
         if (!page_status_entry->resident) {
             if (free_memory_pages.empty()) {
-                evict();
+                swap_out();
             }
 
             page_entry->ppage = free_memory_pages.front();
             free_memory_pages.pop();
 
-            if (!page_status_entry->written_to) {
-                memset((char*)pm_physmem + page_entry->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
-                page_status_entry->written_to = true;
+            if (page_status_entry->written_to) {
+                disk_read(page_status_entry->disk_block, page_entry->ppage);
             }
             else {
-                disk_read(page_status_entry->disk_block,page_entry->ppage);
+                memset((char*)pm_physmem + page_entry->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                page_status_entry->written_to = true;
             }
 
             my_clock.push({running_process_information, cur_index});
@@ -177,20 +177,20 @@ int vm_fault(void* addr, bool write_flag) {
     else {
         if (!page_status_entry->resident) {
             if (free_memory_pages.empty()) {
-                evict();
+                swap_out();
             }
 
             page_entry->ppage = free_memory_pages.front();
             free_memory_pages.pop();
 
-            if (!page_status_entry->written_to) {
-                memset((char*)pm_physmem + page_entry->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
-                page_status_entry->dirty = false;
+            if (page_status_entry->written_to) {
+                disk_read(page_status_entry->disk_block, page_entry->ppage);
             }
             else {
-                disk_read(page_status_entry->disk_block, page_entry->ppage);
-                page_status_entry->dirty = false;
+                memset((char*)pm_physmem + page_entry->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
             }
+
+            page_status_entry->dirty = false;
 
             my_clock.push({running_process_information, cur_index});
             page_status_entry->resident = true;
@@ -221,23 +221,20 @@ void vm_destroy() {
 
         if (page_status_entry->resident) {
             free_memory_pages.push(page_entry->ppage);
-
-            process_information* tmp_pi = my_clock.front().first;
-            unsigned int tmp_index = my_clock.front().second;
-
-            while (tmp_pi != running_process_information || tmp_index != i) {
-                my_clock.pop();
-                my_clock.push({tmp_pi, tmp_index});
-
-                tmp_pi = my_clock.front().first;
-                tmp_index = my_clock.front().second;
-            }
-
-            my_clock.pop();
         }
 
         free_disk_blocks.push(page_status_entry->disk_block);
-        page_status_entry->valid = false;
+    }
+
+    int que_size = my_clock.size();
+    for (int i = 0; i < que_size; ++i) {
+        process_information* tmp_pi = my_clock.front().first;
+        unsigned int tmp_index = my_clock.front().second;
+        my_clock.pop();
+
+        if (tmp_pi != running_process_information) {
+            my_clock.push({tmp_pi, tmp_index});
+        }
     }
 
     process_map.erase(running_process_id);
