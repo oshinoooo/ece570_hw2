@@ -12,90 +12,90 @@ struct page_status_table_entry_t {
     bool dirty;
     bool resident;
     bool reference;
-    bool written_to;
+    bool written;
     unsigned int disk_block;
+    page_table_entry_t* pte_ptr;
 
-    page_status_table_entry_t() : valid(false), dirty(false), resident(false), reference(false), written_to(false), disk_block(0) {}
-};
-
-struct page_status_table_t {
-    page_status_table_entry_t pstes[VM_ARENA_SIZE / VM_PAGESIZE];
+    page_status_table_entry_t() {
+        valid = false;
+        dirty = false;
+        resident = false;
+        reference = false;
+        written = false;
+        disk_block = 0;
+        pte_ptr = nullptr;
+    }
 };
 
 struct process_information {
     int top_address_index;
-
-    page_status_table_t page_status_table;
+    page_status_table_entry_t page_status_table[VM_ARENA_SIZE / VM_PAGESIZE];
     page_table_t page_table;
 
     process_information() : top_address_index(-1) {}
 };
 
-static unsigned int num_memory_pages;
-static unsigned int num_disk_blocks;
-
-static pid_t running_process_id;
-
-static map<pid_t, process_information> process_map;
-
 static queue<unsigned int> free_memory_pages;
 static queue<unsigned int> free_disk_blocks;
-static queue<pair<process_information*, unsigned int>> my_clock;
+
+static map<pid_t, process_information> process_map;
+static queue<page_status_table_entry_t*> my_clock;
+
+static pid_t running_process_id;
+static process_information* running_process_info;
 
 static void swap_out() {
-    process_information* pi = my_clock.front().first;
-    unsigned int index = my_clock.front().second;
-    page_status_table_entry_t* page_status_entry = &pi->page_status_table.pstes[index];
-    page_table_entry_t* page_entry = &pi->page_table.ptes[index];
+    page_status_table_entry_t* page = my_clock.front();
 
-    while (page_status_entry->reference) {
-        page_status_entry->reference = false;
-        page_entry->read_enable = 0;
-        page_entry->write_enable = 0;
+    while (page->reference) {
+        page->reference = false;
+        page->pte_ptr->read_enable = 0;
+        page->pte_ptr->write_enable = 0;
 
         my_clock.pop();
-        my_clock.push({pi, index});
-
-        pi = my_clock.front().first;
-        index = my_clock.front().second;
-        page_status_entry = &pi->page_status_table.pstes[index];
-        page_entry = &pi->page_table.ptes[index];
+        my_clock.push(page);
+        page = my_clock.front();
     }
 
-    if(page_status_entry->dirty && page_status_entry->written_to) {
-        disk_write(page_status_entry->disk_block, page_entry->ppage);
+    my_clock.pop();
+
+    if (page->dirty && page->written) {
+        disk_write(page->disk_block, page->pte_ptr->ppage);
     }
 
-    page_entry->read_enable = 0;
-    page_entry->write_enable = 0;
-    page_status_entry->resident = false;
+    page->pte_ptr->read_enable = 0;
+    page->pte_ptr->write_enable = 0;
+    page->resident = false;
 
-    free_memory_pages.push(page_entry->ppage);
+    free_memory_pages.push(page->pte_ptr->ppage);
+}
+
+static void remove(page_status_table_entry_t* page) {
+    page_status_table_entry_t* tmp_page = my_clock.front();
+
+    while (tmp_page != page) {
+        my_clock.pop();
+        my_clock.push(tmp_page);
+        tmp_page = my_clock.front();
+    }
+
     my_clock.pop();
 }
 
 void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
-    num_memory_pages = memory_pages;
-    num_disk_blocks = disk_blocks;
-
-    running_process_id = -1;
     page_table_base_register = nullptr;
 
-    for (unsigned int i = 0; i < num_memory_pages; ++i) {
+    for (unsigned int i = 0; i < memory_pages; ++i) {
         free_memory_pages.push(i);
     }
 
-    for (unsigned int i = 0; i < num_disk_blocks; ++i) {
+    for (unsigned int i = 0; i < disk_blocks; ++i) {
         free_disk_blocks.push(i);
     }
 }
 
 void vm_create(pid_t pid) {
-    if (process_map.count(pid)) {
-        return;
-    }
-
-    process_map.insert({pid, process_information()});
+    process_map[pid] = process_information();
 }
 
 void vm_switch(pid_t pid) {
@@ -104,154 +104,132 @@ void vm_switch(pid_t pid) {
     }
 
     running_process_id = pid;
-    page_table_base_register = &(process_map[pid].page_table);
+    running_process_info = &(process_map[pid]);
+    page_table_base_register = &(running_process_info->page_table);
 }
 
 void* vm_extend() {
-    process_information* running_process_information = &process_map[running_process_id];
-
-    if ((VM_ARENA_SIZE / VM_PAGESIZE) <= (running_process_information->top_address_index + 1)) {
+    if (((VM_ARENA_SIZE / VM_PAGESIZE) <= (running_process_info->top_address_index + 1)) ||
+        free_disk_blocks.empty()) {
         return nullptr;
     }
 
-    if (free_disk_blocks.empty()) {
-        return nullptr;
-    }
+    int top_index = ++(running_process_info->top_address_index);
+    page_status_table_entry_t* new_page = &(running_process_info->page_status_table[top_index]);
 
-    int top_index = ++(running_process_information->top_address_index);
+    new_page->pte_ptr = &(page_table_base_register->ptes[top_index]);
 
-    page_status_table_entry_t* page_status_entry = &running_process_information->page_status_table.pstes[top_index];
-
-    page_status_entry->disk_block = free_disk_blocks.front();
+    new_page->disk_block = free_disk_blocks.front();
     free_disk_blocks.pop();
 
-    page_status_entry->valid = true;
+    new_page->pte_ptr->read_enable = 0;
+    new_page->pte_ptr->write_enable = 0;
 
-    page_table_entry_t* page_entry = &running_process_information->page_table.ptes[top_index];
-    page_entry->read_enable = 0;
-    page_entry->write_enable = 0;
+    new_page->valid = true;
+    new_page->resident = false;
+    new_page->reference = false;
+    new_page->dirty = false;
+    new_page->written = false;
 
     return (void*)((unsigned long long)VM_ARENA_BASEADDR + top_index * VM_PAGESIZE);
 }
 
 int vm_fault(void* addr, bool write_flag) {
-    process_information* running_process_information = &process_map[running_process_id];
-
-    int top_index = running_process_information->top_address_index;
-
-    if ((unsigned long long)VM_ARENA_BASEADDR + (top_index + 1) * VM_PAGESIZE <= (unsigned long long)addr) {
+    if ((unsigned long long)VM_ARENA_BASEADDR + (running_process_info->top_address_index + 1) * VM_PAGESIZE <= (unsigned long long)addr) {
         return -1;
     }
 
-    unsigned long long cur_index = ((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) / VM_PAGESIZE;
-    page_status_table_entry_t* page_status_entry = &running_process_information->page_status_table.pstes[cur_index];
-    page_table_entry_t* page_entry = &running_process_information->page_table.ptes[cur_index];
+    int cur_index = ((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) / VM_PAGESIZE;
 
-    page_status_entry->reference = true;
+    page_status_table_entry_t* page = &(running_process_info->page_status_table[cur_index]);
+
+    page->reference = true;
 
     if (write_flag) {
-        if (!page_status_entry->resident) {
+        if (!page->resident) {
             if (free_memory_pages.empty()) {
                 swap_out();
             }
 
-            page_entry->ppage = free_memory_pages.front();
+            page->pte_ptr->ppage = free_memory_pages.front();
             free_memory_pages.pop();
 
-            if (page_status_entry->written_to) {
-                disk_read(page_status_entry->disk_block, page_entry->ppage);
+            if (page->written) {
+                disk_read(page->disk_block, page->pte_ptr->ppage);
             }
             else {
-                memset((char*)pm_physmem + page_entry->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
-                page_status_entry->written_to = true;
+                memset((char*)pm_physmem + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                page->written = true;
             }
 
-            my_clock.push({running_process_information, cur_index});
-            page_status_entry->resident = true;
+            my_clock.push(page);
+            page->resident = true;
         }
 
-        page_entry->write_enable = 1;
-        page_entry->read_enable = 1;
-        page_status_entry->dirty = true;
+        page->pte_ptr->write_enable = 1;
+        page->pte_ptr->read_enable = 1;
+        page->dirty = true;
     }
     else {
-        if (!page_status_entry->resident) {
+        if (!page->resident) {
             if (free_memory_pages.empty()) {
                 swap_out();
             }
 
-            page_entry->ppage = free_memory_pages.front();
+            page->pte_ptr->ppage = free_memory_pages.front();
             free_memory_pages.pop();
 
-            if (page_status_entry->written_to) {
-                disk_read(page_status_entry->disk_block, page_entry->ppage);
+            if (page->written) {
+                disk_read(page->disk_block, page->pte_ptr->ppage);
             }
             else {
-                memset((char*)pm_physmem + page_entry->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                memset((char*)pm_physmem + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
             }
 
-            page_status_entry->dirty = false;
+            page->dirty = false;
 
-            my_clock.push({running_process_information, cur_index});
-            page_status_entry->resident = true;
+            my_clock.push(page);
+            page->resident = true;
         }
 
-        if(page_status_entry->dirty) {
-            page_entry->write_enable = 1;
+        if(page->dirty) {
+            page->pte_ptr->write_enable = 1;
         }
         else {
-            page_entry->write_enable = 0;
+            page->pte_ptr->write_enable = 0;
         }
 
-        page_entry->read_enable = 1;
-        page_status_entry->reference = true;
+        page->pte_ptr->read_enable = 1;
+        page->reference = true;
     }
 
     return 0;
 }
 
 void vm_destroy() {
-    process_information* running_process_information = &process_map[running_process_id];
+    for (unsigned int i = 0; i <= running_process_info->top_address_index; ++i) {
+        page_status_table_entry_t* page = &(running_process_info->page_status_table[i]);
 
-    int top_index = running_process_information->top_address_index;
-
-    for (unsigned int i = 0; i <= top_index; ++i) {
-        page_status_table_entry_t* page_status_entry = &running_process_information->page_status_table.pstes[i];
-        page_table_entry_t* page_entry = &running_process_information->page_table.ptes[i];
-
-        if (page_status_entry->resident) {
-            free_memory_pages.push(page_entry->ppage);
+        if (page->resident) {
+            free_memory_pages.push(page->pte_ptr->ppage);
+            remove(page);
         }
 
-        free_disk_blocks.push(page_status_entry->disk_block);
-    }
-
-    int que_size = my_clock.size();
-    for (int i = 0; i < que_size; ++i) {
-        process_information* tmp_pi = my_clock.front().first;
-        unsigned int tmp_index = my_clock.front().second;
-        my_clock.pop();
-
-        if (tmp_pi != running_process_information) {
-            my_clock.push({tmp_pi, tmp_index});
-        }
+        free_disk_blocks.push(page->disk_block);
+        page->valid = false;
     }
 
     process_map.erase(running_process_id);
 
-    running_process_id = -1;
+    running_process_info = nullptr;
     page_table_base_register = nullptr;
 }
 
 int vm_syslog(void* message, unsigned int len) {
-    process_information* running_process_information = &process_map[running_process_id];
-
-    int top_index = running_process_information->top_address_index;
-
-    unsigned long long top_address = (top_index + 1) * VM_PAGESIZE + (unsigned long long)VM_ARENA_BASEADDR;
+    unsigned long long top_address = (running_process_info->top_address_index + 1) * VM_PAGESIZE + (unsigned long long)VM_ARENA_BASEADDR;
 
     if (((unsigned long long)message < (unsigned long long)VM_ARENA_BASEADDR) ||
-        (top_address <= (unsigned long long)message + len) ||
+        ((unsigned long long)message >= top_address - len) ||
         len <= 0) {
         return -1;
     }
@@ -261,21 +239,17 @@ int vm_syslog(void* message, unsigned int len) {
     for (unsigned int i = 0; i < len; ++i) {
         unsigned int page_number = ((unsigned long long)message - (unsigned long long)VM_ARENA_BASEADDR + i) / VM_PAGESIZE;
         unsigned int page_offset = ((unsigned long long)message - (unsigned long long)VM_ARENA_BASEADDR + i) % VM_PAGESIZE;
+        unsigned int physical_page = page_table_base_register->ptes[page_number].ppage;
 
-        page_status_table_entry_t* page_status_entry = &running_process_information->page_status_table.pstes[page_number];
-        page_table_entry_t* page_entry = &running_process_information->page_table.ptes[page_number];
-
-        unsigned int physical_page = page_entry->ppage;
-
-        if (page_entry->read_enable == 0 || !page_status_entry->resident) {
+        if (page_table_base_register->ptes[page_number].read_enable == 0 || !running_process_info->page_status_table[page_number].resident) {
             if (vm_fault((void*)((unsigned long long)message + i), false)) {
                 return -1;
             }
 
-            physical_page = page_entry->ppage;
+            physical_page = page_table_base_register->ptes[page_number].ppage;
         }
 
-        page_status_entry->reference = true;
+        running_process_info->page_status_table[page_number].reference = true;
         s.append((char*)pm_physmem + physical_page * VM_PAGESIZE + page_offset, 1);
     }
 
