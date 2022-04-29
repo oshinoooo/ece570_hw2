@@ -146,74 +146,72 @@ void* vm_extend() {
 }
 
 int vm_fault(void* addr, bool write_flag) {
-    if (((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) >= (running_process_info->top_valid_index + 1) * VM_PAGESIZE) {
+    if ((unsigned long long)VM_ARENA_BASEADDR + (running_process_info->top_valid_index + 1) * VM_PAGESIZE <= (unsigned long long)addr) {
         return -1;
     }
 
-    page_status_table_entry_t* p = running_process_info->pages[((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) / VM_PAGESIZE];
+    page_status_table_entry_t* page = running_process_info->pages[((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) / VM_PAGESIZE];
 
-    p->reference = true;
+    page->reference = true;
 
-    //Write
     if (write_flag) {
-        if (!p->resident) {
+        if (!page->resident) {
             if (free_memory_pages.empty()) {
                 evict();
             }
 
-            p->pte_ptr->ppage = free_memory_pages.top();
+            page->pte_ptr->ppage = free_memory_pages.top();
             free_memory_pages.pop();
 
-            if(!p->written_to) {
-                memset(((char*)pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
-                p->written_to = true;
+            if(!page->written_to) {
+                memset(((char*)pm_physmem) + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                page->written_to = true;
             }
             else {
-                disk_read(p->disk_block,p->pte_ptr->ppage);
+                disk_read(page->disk_block, page->pte_ptr->ppage);
             }
 
-            my_clock.push(p);
-            p->resident = true;
+            my_clock.push(page);
+            page->resident = true;
         }
 
-        p->pte_ptr->write_enable = 1;
-        p->pte_ptr->read_enable = 1;
-        p->dirty = true;
+        page->pte_ptr->write_enable = 1;
+        page->pte_ptr->read_enable = 1;
+        page->dirty = true;
     }
     else {
-        if (!p->resident) {
+        if (!page->resident) {
             if (free_memory_pages.empty()) {
                 evict();
             }
 
-            p->pte_ptr->ppage = free_memory_pages.top();
+            page->pte_ptr->ppage = free_memory_pages.top();
             free_memory_pages.pop();
 
-            if(!p->written_to) {
-                memset(((char*)pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
-                p->dirty = false;
+            if(!page->written_to) {
+                memset(((char*)pm_physmem) + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
             }
             else {
-                disk_read(p->disk_block, p->pte_ptr->ppage);
-                p->dirty = false;
+                disk_read(page->disk_block, page->pte_ptr->ppage);
             }
 
-            my_clock.push(p);
-            p->resident = true;
+            page->dirty = false;
+
+            my_clock.push(page);
+            page->resident = true;
         }
 
-        if(p->dirty) {
-            p->pte_ptr->write_enable = 1;
+        if(page->dirty) {
+            page->pte_ptr->write_enable = 1;
         }
         else {
-            p->pte_ptr->write_enable = 0;
+            page->pte_ptr->write_enable = 0;
         }
 
-        p->pte_ptr->read_enable = 1;
-        p->reference = true;
+        page->pte_ptr->read_enable = 1;
+        page->reference = true;
     }
 
-//    p = nullptr;
     return 0;
 }
 
@@ -221,7 +219,6 @@ void vm_destroy() {
     for (unsigned int i = 0; i <= running_process_info->top_valid_index; ++i) {
         page_status_table_entry_t* p = running_process_info->pages[i];
 
-        //if page_status_table_entry_t in physmem
         if (p->resident) {
             free_memory_pages.push(p->pte_ptr->ppage);
             remove(p);
@@ -230,11 +227,8 @@ void vm_destroy() {
         free_disk_blocks.push(p->disk_block);
         p->valid = false;
         delete p;
-        p = nullptr;
     }
 
-    //delete running_process_info->ptbl_ptr;
-    //delete [] running_process_info->pages;
     delete running_process_info;
     process_map.erase(running_process_id);
 
@@ -255,8 +249,7 @@ int vm_syslog(void* message, unsigned int len) {
     string s;
 
     for (unsigned int i = 0; i < len; ++i) {
-        //get the virtual page_status_table_entry_t number from the address
-        unsigned int page_number    = ((unsigned long long)message - (unsigned long long)VM_ARENA_BASEADDR + i) / VM_PAGESIZE;
+        unsigned int page_number = ((unsigned long long)message - (unsigned long long)VM_ARENA_BASEADDR + i) / VM_PAGESIZE;
         unsigned int page_offset = ((unsigned long long)message - (unsigned long long)VM_ARENA_BASEADDR + i) % VM_PAGESIZE;
         unsigned int physical_page = page_table_base_register->ptes[page_number].ppage;
 

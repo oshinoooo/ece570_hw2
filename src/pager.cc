@@ -139,9 +139,7 @@ int vm_fault(void* addr, bool write_flag) {
         return -1;
     }
 
-    int cur_index = ((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) / VM_PAGESIZE;
-
-    page_status_table_entry_t* page = &(running_process_info->page_status_table[cur_index]);
+    page_status_table_entry_t* page = &(running_process_info->page_status_table[((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) / VM_PAGESIZE]);
 
     page->reference = true;
 
@@ -154,12 +152,12 @@ int vm_fault(void* addr, bool write_flag) {
             page->pte_ptr->ppage = free_memory_pages.front();
             free_memory_pages.pop();
 
-            if (page->written) {
-                disk_read(page->disk_block, page->pte_ptr->ppage);
-            }
-            else {
+            if (!page->written) {
                 memset((char*)pm_physmem + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
                 page->written = true;
+            }
+            else {
+                disk_read(page->disk_block, page->pte_ptr->ppage);
             }
 
             my_clock.push(page);
@@ -179,11 +177,11 @@ int vm_fault(void* addr, bool write_flag) {
             page->pte_ptr->ppage = free_memory_pages.front();
             free_memory_pages.pop();
 
-            if (page->written) {
-                disk_read(page->disk_block, page->pte_ptr->ppage);
+            if (!page->written) {
+                memset((char*)pm_physmem + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
             }
             else {
-                memset((char*)pm_physmem + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                disk_read(page->disk_block, page->pte_ptr->ppage);
             }
 
             page->dirty = false;
@@ -228,8 +226,9 @@ void vm_destroy() {
 int vm_syslog(void* message, unsigned int len) {
     unsigned long long top_address = (running_process_info->top_address_index + 1) * VM_PAGESIZE + (unsigned long long)VM_ARENA_BASEADDR;
 
-    if (((unsigned long long)message < (unsigned long long)VM_ARENA_BASEADDR) ||
-        ((unsigned long long)message >= top_address - len) ||
+    if (((unsigned long long)message >= top_address - len) ||
+        ((unsigned long long)message >= top_address) ||
+        ((unsigned long long)message < (unsigned long long)VM_ARENA_BASEADDR) ||
         len <= 0) {
         return -1;
     }
