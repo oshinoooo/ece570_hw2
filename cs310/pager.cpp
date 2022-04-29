@@ -10,19 +10,31 @@
 using namespace std;
 
 struct page_status_table_entry_t {
-    page_table_entry_t* pte_ptr;
-    bool written_to;
+    bool valid;
     bool dirty;
     bool resident;
     bool reference;
-    bool valid;
+    bool written;
     unsigned int disk_block;
+    page_table_entry_t* pte_ptr;
+
+    page_status_table_entry_t() {
+        valid = false;
+        dirty = false;
+        resident = false;
+        reference = false;
+        written = false;
+        disk_block = 0;
+        pte_ptr = nullptr;
+    }
 };
 
 struct process_information {
+    int top_address_index;
     page_table_t* ptbl_ptr;
     page_status_table_entry_t** pages;
-    int top_valid_index;
+
+    process_information() : top_address_index(-1) {}
 };
 
 static stack<unsigned int> free_memory_pages;
@@ -34,7 +46,7 @@ static queue<page_status_table_entry_t*> my_clock;
 static pid_t running_process_id;
 static process_information* running_process_info;
 
-static void evict() {
+static void swap_out() {
     page_status_table_entry_t* temp = my_clock.front();
 
     assert(temp->valid);
@@ -50,7 +62,7 @@ static void evict() {
         temp = my_clock.front();
     }
 
-    if(temp->dirty && temp->written_to) {
+    if(temp->dirty && temp->written) {
         disk_write(temp->disk_block, temp->pte_ptr->ppage);
     }
 
@@ -94,7 +106,7 @@ void vm_create(pid_t pid) {
     process_information* process = new process_information();
     process->ptbl_ptr = new page_table_t;
     process->pages = new page_status_table_entry_t*[VM_ARENA_SIZE / VM_PAGESIZE];
-    process->top_valid_index = -1;
+    process->top_address_index = -1;
     process_map[pid] = process;
 }
 
@@ -109,7 +121,7 @@ void vm_switch(pid_t pid) {
 }
 
 void* vm_extend() {
-    if ((running_process_info->top_valid_index + 1) >= VM_ARENA_SIZE / VM_PAGESIZE) {
+    if ((running_process_info->top_address_index + 1) >= VM_ARENA_SIZE / VM_PAGESIZE) {
         return nullptr;
     }
 
@@ -117,12 +129,12 @@ void* vm_extend() {
         return nullptr;
     }
 
-    running_process_info->top_valid_index++;
+    running_process_info->top_address_index++;
 
     page_status_table_entry_t* p = new page_status_table_entry_t;
 
     //init virtual pages
-    p->pte_ptr = &(page_table_base_register->ptes[running_process_info->top_valid_index]);
+    p->pte_ptr = &(page_table_base_register->ptes[running_process_info->top_address_index]);
 
     //allocate disk_block
     p->disk_block = free_disk_blocks.top();
@@ -134,19 +146,19 @@ void* vm_extend() {
 
     p->reference = false;
     p->resident = false;
-    p->written_to = false;
+    p->written = false;
     p->valid = true;
     p->dirty = false;
 
     //PF and disk block allocation delayed to vm_fault
 
-    running_process_info->pages[running_process_info->top_valid_index] = p;
+    running_process_info->pages[running_process_info->top_address_index] = p;
 
-    return (void*)((unsigned long long)VM_ARENA_BASEADDR + running_process_info->top_valid_index * VM_PAGESIZE);
+    return (void*)((unsigned long long)VM_ARENA_BASEADDR + running_process_info->top_address_index * VM_PAGESIZE);
 }
 
 int vm_fault(void* addr, bool write_flag) {
-    if ((unsigned long long)VM_ARENA_BASEADDR + (running_process_info->top_valid_index + 1) * VM_PAGESIZE <= (unsigned long long)addr) {
+    if ((unsigned long long)VM_ARENA_BASEADDR + (running_process_info->top_address_index + 1) * VM_PAGESIZE <= (unsigned long long)addr) {
         return -1;
     }
 
@@ -157,15 +169,15 @@ int vm_fault(void* addr, bool write_flag) {
     if (write_flag) {
         if (!page->resident) {
             if (free_memory_pages.empty()) {
-                evict();
+                swap_out();
             }
 
             page->pte_ptr->ppage = free_memory_pages.top();
             free_memory_pages.pop();
 
-            if(!page->written_to) {
+            if(!page->written) {
                 memset(((char*)pm_physmem) + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
-                page->written_to = true;
+                page->written = true;
             }
             else {
                 disk_read(page->disk_block, page->pte_ptr->ppage);
@@ -182,13 +194,13 @@ int vm_fault(void* addr, bool write_flag) {
     else {
         if (!page->resident) {
             if (free_memory_pages.empty()) {
-                evict();
+                swap_out();
             }
 
             page->pte_ptr->ppage = free_memory_pages.top();
             free_memory_pages.pop();
 
-            if(!page->written_to) {
+            if(!page->written) {
                 memset(((char*)pm_physmem) + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
             }
             else {
@@ -216,7 +228,7 @@ int vm_fault(void* addr, bool write_flag) {
 }
 
 void vm_destroy() {
-    for (unsigned int i = 0; i <= running_process_info->top_valid_index; ++i) {
+    for (unsigned int i = 0; i <= running_process_info->top_address_index; ++i) {
         page_status_table_entry_t* p = running_process_info->pages[i];
 
         if (p->resident) {
@@ -237,7 +249,7 @@ void vm_destroy() {
 }
 
 int vm_syslog(void* message, unsigned int len) {
-    unsigned long long top_address = (running_process_info->top_valid_index + 1) * VM_PAGESIZE + (unsigned long long)VM_ARENA_BASEADDR;
+    unsigned long long top_address = (running_process_info->top_address_index + 1) * VM_PAGESIZE + (unsigned long long)VM_ARENA_BASEADDR;
 
     if (((unsigned long long)message >= top_address - len) ||
         ((unsigned long long)message >= top_address) ||
