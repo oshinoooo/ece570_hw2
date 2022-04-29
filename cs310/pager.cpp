@@ -170,7 +170,7 @@ int vm_fault(void* addr, bool write_flag) {
             free_pages.pop();
 
             if(!p->written_to) {
-                memset((char*)pm_physmem + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                memset(((char*)pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
                 p->written_to = true;
             }
             else {
@@ -195,7 +195,7 @@ int vm_fault(void* addr, bool write_flag) {
             free_pages.pop();
 
             if(!p->written_to) {
-                memset((char*)pm_physmem + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                memset(((char*)pm_physmem) + p->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
                 p->dirty = false;
             }
             else {
@@ -277,6 +277,6 @@ int vm_syslog(void* message, unsigned int len) {
         s.append((char*)pm_physmem + pf * VM_PAGESIZE + page_offset, 1);
     }
 
-    cout << "syslog\t\t\t" << s << endl;
+    cout << "syslog \t\t\t" << s << endl;
     return 0;
 }
