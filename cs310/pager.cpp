@@ -2,7 +2,6 @@
 #include <stack>
 #include <queue>
 #include <map>
-#include <assert.h>
 #include <cstring>
 
 #include "../src/vm_pager.h"
@@ -31,7 +30,7 @@ struct page_status_table_entry_t {
 
 struct process_information {
     int top_address_index;
-    page_status_table_entry_t** pages;
+    page_status_table_entry_t* pages[VM_ARENA_SIZE / VM_PAGESIZE];
     page_table_t page_table;
 
     process_information() : top_address_index(-1) {}
@@ -48,8 +47,6 @@ static process_information* running_process_info;
 
 static void swap_out() {
     page_status_table_entry_t* temp = my_clock.front();
-
-    assert(temp->valid);
 
     while (temp->reference) {
         temp->reference = false;
@@ -103,10 +100,7 @@ void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
 }
 
 void vm_create(pid_t pid) {
-    process_information* process = new process_information();
-    process->pages = new page_status_table_entry_t*[VM_ARENA_SIZE / VM_PAGESIZE];
-    process->top_address_index = -1;
-    process_map[pid] = process;
+    process_map[pid] = new process_information();
 }
 
 void vm_switch(pid_t pid) {
@@ -120,38 +114,30 @@ void vm_switch(pid_t pid) {
 }
 
 void* vm_extend() {
-    if ((running_process_info->top_address_index + 1) >= VM_ARENA_SIZE / VM_PAGESIZE) {
+    if (((VM_ARENA_SIZE / VM_PAGESIZE) <= (running_process_info->top_address_index + 1)) ||
+        free_disk_blocks.empty()) {
         return nullptr;
     }
 
-    if (free_disk_blocks.empty()) {
-        return nullptr;
-    }
+    int top_index = ++(running_process_info->top_address_index);
 
-    running_process_info->top_address_index++;
+    page_status_table_entry_t* new_page = new page_status_table_entry_t;
 
-    page_status_table_entry_t* p = new page_status_table_entry_t;
+    new_page->pte_ptr = &(page_table_base_register->ptes[top_index]);
 
-    //init virtual pages
-    p->pte_ptr = &(page_table_base_register->ptes[running_process_info->top_address_index]);
-
-    //allocate disk_block
-    p->disk_block = free_disk_blocks.top();
+    new_page->disk_block = free_disk_blocks.top();
     free_disk_blocks.pop();
 
-    //make non-resident
-    p->pte_ptr->read_enable = 0;
-    p->pte_ptr->write_enable = 0;
+    new_page->pte_ptr->read_enable = 0;
+    new_page->pte_ptr->write_enable = 0;
 
-    p->reference = false;
-    p->resident = false;
-    p->written = false;
-    p->valid = true;
-    p->dirty = false;
+    new_page->valid = true;
+    new_page->resident = false;
+    new_page->reference = false;
+    new_page->dirty = false;
+    new_page->written = false;
 
-    //PF and disk block allocation delayed to vm_fault
-
-    running_process_info->pages[running_process_info->top_address_index] = p;
+    running_process_info->pages[top_index] = new_page;
 
     return (void*)((unsigned long long)VM_ARENA_BASEADDR + running_process_info->top_address_index * VM_PAGESIZE);
 }

@@ -115,6 +115,7 @@ void* vm_extend() {
     }
 
     int top_index = ++(running_process_info->top_address_index);
+
     page_status_table_entry_t* new_page = &(running_process_info->page_status_table[top_index]);
 
     new_page->pte_ptr = &(page_table_base_register->ptes[top_index]);
