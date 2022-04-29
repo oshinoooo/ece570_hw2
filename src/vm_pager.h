@@ -19,7 +19,7 @@
  * vm_init
  *
  * Called when the pager starts.  It should set up any internal data structures
- * needed by the pager, e.g. physical page bookkeeping, process table, disk
+ * needed by the pager, e.g. physical page_status_table_entry_t bookkeeping, process table, disk
  * usage table, etc.
  *
  * vm_init is passed both the number of physical memory pages and the number
@@ -59,7 +59,7 @@ extern int vm_fault(void *addr, bool write_flag);
  * vm_destroy
  *
  * Called when current process exits.  It should deallocate all resources
- * held by the current process (page table, physical pages, disk blocks, etc.)
+ * held by the current process (page_status_table_entry_t table, physical pages, disk blocks, etc.)
  */
 extern void vm_destroy();
 
@@ -67,8 +67,8 @@ extern void vm_destroy();
  * vm_extend
  *
  * A request by current process to declare as valid the lowest invalid virtual
- * page in the arena.  It should return the lowest-numbered byte of the new
- * valid virtual page.  E.g., if the valid part of the arena before calling
+ * page_status_table_entry_t in the arena.  It should return the lowest-numbered byte of the new
+ * valid virtual page_status_table_entry_t.  E.g., if the valid part of the arena before calling
  * vm_extend is 0x60000000-0x60003fff, the return value will be 0x60004000,
  * and the resulting valid part of the arena will be 0x60000000-0x60005fff.
  * vm_extend should return NULL on error, e.g., if the disk is out of swap
@@ -99,14 +99,14 @@ extern int vm_syslog(void *message, unsigned int len);
 /*
  * disk_read
  *
- * read block "block" from the disk into physical memory page "ppage".
+ * read block "block" from the disk into physical memory page_status_table_entry_t "ppage".
  */
 extern void disk_read(unsigned int block, unsigned int ppage);
 
 /*
  * disk_write
  *
- * write the contents of physical memory page "ppage" onto disk block "block".
+ * write the contents of physical memory page_status_table_entry_t "ppage" onto disk block "block".
  */
 extern void disk_write(unsigned int block, unsigned int ppage);
 
@@ -135,7 +135,7 @@ extern void * pm_physmem;
 /* virtual address at which application's arena starts */
 #define VM_ARENA_BASEADDR    ((void *) 0x60000000)
 
-/* virtual page number at which application's arena starts */
+/* virtual page_status_table_entry_t number at which application's arena starts */
 #define VM_ARENA_BASEPAGE    ((uintptr_t) VM_ARENA_BASEADDR / VM_PAGESIZE)
 
 /* size (in bytes) of arena */
@@ -143,16 +143,16 @@ extern void * pm_physmem;
 
 /*
  * **************************************
- * * Definition of page table structure *
+ * * Definition of page_status_table_entry_t table structure *
  * **************************************
  */
 
 /*
- * Format of page table entry.
+ * Format of page_status_table_entry_t table entry.
  *
- * read_enable=0 ==> loads to this virtual page will fault
- * write_enable=0 ==> stores to this virtual page will fault
- * ppage refers to the physical page for this virtual page (unused if
+ * read_enable=0 ==> loads to this virtual page_status_table_entry_t will fault
+ * write_enable=0 ==> stores to this virtual page_status_table_entry_t will fault
+ * ppage refers to the physical page_status_table_entry_t for this virtual page_status_table_entry_t (unused if
  * both read_enable and write_enable are 0)
  */
 typedef struct {
@@ -162,15 +162,15 @@ typedef struct {
 } page_table_entry_t;
 
 /*
- * Format of page table.  Entries start at virtual page VM_ARENA_BASEPAGE,
- * i.e. ptes[0] is the page table entry for virtual page VM_ARENA_BASEPAGE.
+ * Format of page_status_table_entry_t table.  Entries start at virtual page_status_table_entry_t VM_ARENA_BASEPAGE,
+ * i.e. ptes[0] is the page_status_table_entry_t table entry for virtual page_status_table_entry_t VM_ARENA_BASEPAGE.
  */
 typedef struct {
     page_table_entry_t ptes[VM_ARENA_SIZE/VM_PAGESIZE];
 } page_table_t;
 
 /*
- * MMU's page table base register.  This variable is defined by the
+ * MMU's page_status_table_entry_t table base register.  This variable is defined by the
  * infrastructure, but it is controlled completely by the student's pager code.
  */
 extern page_table_t *page_table_base_register;
