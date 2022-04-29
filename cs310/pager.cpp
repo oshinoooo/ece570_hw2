@@ -155,7 +155,7 @@ int vm_fault(void* addr, bool write_flag) {
             page->pte_ptr->ppage = free_memory_pages.front();
             free_memory_pages.pop();
 
-            if(!page->written) {
+            if (!page->written) {
                 memset(((char*)pm_physmem) + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
                 page->written = true;
             }
@@ -180,7 +180,7 @@ int vm_fault(void* addr, bool write_flag) {
             page->pte_ptr->ppage = free_memory_pages.front();
             free_memory_pages.pop();
 
-            if(!page->written) {
+            if (!page->written) {
                 memset(((char*)pm_physmem) + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
             }
             else {
@@ -209,16 +209,16 @@ int vm_fault(void* addr, bool write_flag) {
 
 void vm_destroy() {
     for (unsigned int i = 0; i <= running_process_info->top_address_index; ++i) {
-        page_status_table_entry_t* p = running_process_info->pages[i];
+        page_status_table_entry_t* page = running_process_info->pages[i];
 
-        if (p->resident) {
-            free_memory_pages.push(p->pte_ptr->ppage);
-            remove(p);
+        if (page->resident) {
+            free_memory_pages.push(page->pte_ptr->ppage);
+            remove(page);
         }
 
-        free_disk_blocks.push(p->disk_block);
-        p->valid = false;
-        delete p;
+        free_disk_blocks.push(page->disk_block);
+        page->valid = false;
+        delete page;
     }
 
     delete running_process_info;

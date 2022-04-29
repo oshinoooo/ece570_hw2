@@ -156,7 +156,7 @@ int vm_fault(void* addr, bool write_flag) {
             free_memory_pages.pop();
 
             if (!page->written) {
-                memset((char*)pm_physmem + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                memset(((char*)pm_physmem) + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
                 page->written = true;
             }
             else {
@@ -181,7 +181,7 @@ int vm_fault(void* addr, bool write_flag) {
             free_memory_pages.pop();
 
             if (!page->written) {
-                memset((char*)pm_physmem + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
+                memset(((char*)pm_physmem) + page->pte_ptr->ppage * VM_PAGESIZE, 0, VM_PAGESIZE);
             }
             else {
                 disk_read(page->disk_block, page->pte_ptr->ppage);
@@ -218,8 +218,10 @@ void vm_destroy() {
 
         free_disk_blocks.push(page->disk_block);
         page->valid = false;
+        delete page;
     }
 
+    delete running_process_info;
     process_map.erase(running_process_id);
 
     running_process_info = nullptr;
@@ -243,7 +245,7 @@ int vm_syslog(void* message, unsigned int len) {
         unsigned int page_offset = ((unsigned long long)message - (unsigned long long)VM_ARENA_BASEADDR + i) % VM_PAGESIZE;
         unsigned int physical_page = page_table_base_register->ptes[page_number].ppage;
 
-        if (page_table_base_register->ptes[page_number].read_enable == 0 || !running_process_info->page_status_table[page_number].resident) {
+        if (page_table_base_register->ptes[page_number].read_enable == 0 || !running_process_info->pages[page_number]->resident) {
             if (vm_fault((void*)((unsigned long long)message + i), false)) {
                 return -1;
             }
