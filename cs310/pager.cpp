@@ -31,8 +31,8 @@ struct page_status_table_entry_t {
 
 struct process_information {
     int top_address_index;
-    page_table_t* ptbl_ptr;
     page_status_table_entry_t** pages;
+    page_table_t page_table;
 
     process_information() : top_address_index(-1) {}
 };
@@ -104,7 +104,6 @@ void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
 
 void vm_create(pid_t pid) {
     process_information* process = new process_information();
-    process->ptbl_ptr = new page_table_t;
     process->pages = new page_status_table_entry_t*[VM_ARENA_SIZE / VM_PAGESIZE];
     process->top_address_index = -1;
     process_map[pid] = process;
@@ -117,7 +116,7 @@ void vm_switch(pid_t pid) {
 
     running_process_id = pid;
     running_process_info = process_map[pid];
-    page_table_base_register = running_process_info->ptbl_ptr;
+    page_table_base_register = &(running_process_info->page_table);
 }
 
 void* vm_extend() {
