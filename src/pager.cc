@@ -29,7 +29,7 @@ struct page_status_table_entry_t {
 
 struct process_information {
     int top_address_index;
-    page_status_table_entry_t page_status_table[VM_ARENA_SIZE / VM_PAGESIZE];
+    page_status_table_entry_t* pages[VM_ARENA_SIZE / VM_PAGESIZE];
     page_table_t page_table;
 
     process_information() : top_address_index(-1) {}
@@ -38,7 +38,7 @@ struct process_information {
 static queue<unsigned int> free_memory_pages;
 static queue<unsigned int> free_disk_blocks;
 
-static map<pid_t, process_information> process_map;
+static map<pid_t, process_information*> process_map;
 static queue<page_status_table_entry_t*> my_clock;
 
 static pid_t running_process_id;
@@ -95,7 +95,7 @@ void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
 }
 
 void vm_create(pid_t pid) {
-    process_map[pid] = process_information();
+    process_map[pid] = new process_information();
 }
 
 void vm_switch(pid_t pid) {
@@ -104,7 +104,7 @@ void vm_switch(pid_t pid) {
     }
 
     running_process_id = pid;
-    running_process_info = &(process_map[pid]);
+    running_process_info = process_map[pid];
     page_table_base_register = &(running_process_info->page_table);
 }
 
@@ -116,7 +116,7 @@ void* vm_extend() {
 
     int top_index = ++(running_process_info->top_address_index);
 
-    page_status_table_entry_t* new_page = &(running_process_info->page_status_table[top_index]);
+    page_status_table_entry_t* new_page = new page_status_table_entry_t;
 
     new_page->pte_ptr = &(page_table_base_register->ptes[top_index]);
 
@@ -132,6 +132,8 @@ void* vm_extend() {
     new_page->dirty = false;
     new_page->written = false;
 
+    running_process_info->pages[top_index] = new_page;
+
     return (void*)((unsigned long long)VM_ARENA_BASEADDR + top_index * VM_PAGESIZE);
 }
 
@@ -140,7 +142,7 @@ int vm_fault(void* addr, bool write_flag) {
         return -1;
     }
 
-    page_status_table_entry_t* page = &(running_process_info->page_status_table[((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) / VM_PAGESIZE]);
+    page_status_table_entry_t* page = running_process_info->pages[((unsigned long long)addr - (unsigned long long)VM_ARENA_BASEADDR) / VM_PAGESIZE];
 
     page->reference = true;
 
@@ -207,7 +209,7 @@ int vm_fault(void* addr, bool write_flag) {
 
 void vm_destroy() {
     for (unsigned int i = 0; i <= running_process_info->top_address_index; ++i) {
-        page_status_table_entry_t* page = &(running_process_info->page_status_table[i]);
+        page_status_table_entry_t* page = running_process_info->pages[i];
 
         if (page->resident) {
             free_memory_pages.push(page->pte_ptr->ppage);
@@ -249,7 +251,7 @@ int vm_syslog(void* message, unsigned int len) {
             physical_page = page_table_base_register->ptes[page_number].ppage;
         }
 
-        running_process_info->page_status_table[page_number].reference = true;
+        running_process_info->pages[page_number]->reference = true;
         s.append((char*)pm_physmem + physical_page * VM_PAGESIZE + page_offset, 1);
     }
 

@@ -1,5 +1,4 @@
 #include <iostream>
-#include <stack>
 #include <queue>
 #include <map>
 #include <cstring>
@@ -36,8 +35,8 @@ struct process_information {
     process_information() : top_address_index(-1) {}
 };
 
-static stack<unsigned int> free_memory_pages;
-static stack<unsigned int> free_disk_blocks;
+static queue<unsigned int> free_memory_pages;
+static queue<unsigned int> free_disk_blocks;
 
 static map<pid_t, process_information*> process_map;
 static queue<page_status_table_entry_t*> my_clock;
@@ -46,45 +45,41 @@ static pid_t running_process_id;
 static process_information* running_process_info;
 
 static void swap_out() {
-    page_status_table_entry_t* temp = my_clock.front();
+    page_status_table_entry_t* page = my_clock.front();
 
-    while (temp->reference) {
-        temp->reference = false;
-        //reset read_enable so that the next read can be registered
-        temp->pte_ptr->read_enable = 0;
-        temp->pte_ptr->write_enable = 0;
+    while (page->reference) {
+        page->reference = false;
+        page->pte_ptr->read_enable = 0;
+        page->pte_ptr->write_enable = 0;
 
         my_clock.pop();
-        my_clock.push(temp);
-        temp = my_clock.front();
+        my_clock.push(page);
+        page = my_clock.front();
     }
 
-    if(temp->dirty && temp->written) {
-        disk_write(temp->disk_block, temp->pte_ptr->ppage);
-    }
-
-    //make page_status_table_entry_t non-resident
-    temp->pte_ptr->read_enable = 0;
-    temp->pte_ptr->write_enable = 0;
-    temp->resident = false;
-
-    // add it back to the stack
-    free_memory_pages.push(temp->pte_ptr->ppage);
     my_clock.pop();
+
+    if (page->dirty && page->written) {
+        disk_write(page->disk_block, page->pte_ptr->ppage);
+    }
+
+    page->pte_ptr->read_enable = 0;
+    page->pte_ptr->write_enable = 0;
+    page->resident = false;
+
+    free_memory_pages.push(page->pte_ptr->ppage);
 }
 
-static void remove(page_status_table_entry_t* p) {
-    page_status_table_entry_t* rm = my_clock.front();
+static void remove(page_status_table_entry_t* page) {
+    page_status_table_entry_t* tmp_page = my_clock.front();
 
-    while (rm != p) {
+    while (tmp_page != page) {
         my_clock.pop();
-        my_clock.push(rm);
-        rm = my_clock.front();
+        my_clock.push(tmp_page);
+        tmp_page = my_clock.front();
     }
 
-    //delete
     my_clock.pop();
-    rm = nullptr;
 }
 
 void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
@@ -125,7 +120,7 @@ void* vm_extend() {
 
     new_page->pte_ptr = &(page_table_base_register->ptes[top_index]);
 
-    new_page->disk_block = free_disk_blocks.top();
+    new_page->disk_block = free_disk_blocks.front();
     free_disk_blocks.pop();
 
     new_page->pte_ptr->read_enable = 0;
@@ -139,7 +134,7 @@ void* vm_extend() {
 
     running_process_info->pages[top_index] = new_page;
 
-    return (void*)((unsigned long long)VM_ARENA_BASEADDR + running_process_info->top_address_index * VM_PAGESIZE);
+    return (void*)((unsigned long long)VM_ARENA_BASEADDR + top_index * VM_PAGESIZE);
 }
 
 int vm_fault(void* addr, bool write_flag) {
@@ -157,7 +152,7 @@ int vm_fault(void* addr, bool write_flag) {
                 swap_out();
             }
 
-            page->pte_ptr->ppage = free_memory_pages.top();
+            page->pte_ptr->ppage = free_memory_pages.front();
             free_memory_pages.pop();
 
             if(!page->written) {
@@ -182,7 +177,7 @@ int vm_fault(void* addr, bool write_flag) {
                 swap_out();
             }
 
-            page->pte_ptr->ppage = free_memory_pages.top();
+            page->pte_ptr->ppage = free_memory_pages.front();
             free_memory_pages.pop();
 
             if(!page->written) {
