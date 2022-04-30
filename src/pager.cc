@@ -99,10 +99,6 @@ void vm_create(pid_t pid) {
 }
 
 void vm_switch(pid_t pid) {
-    if (!process_map.count(pid)) {
-        return;
-    }
-
     running_process_id = pid;
     running_process_info = process_map[pid];
     page_table_base_register = &(running_process_info->page_table);
