@@ -234,24 +234,26 @@ void* vm_extend() {
 }
 
 int vm_syslog(void* message, unsigned int len) {
-    unsigned long vaddrin = (unsigned long) message;
-    string str;
-    //go beyond the range
-    if (vaddrin < (unsigned long)VM_ARENA_BASEADDR || vaddrin + (unsigned long)len - 1 > processtable[running_process_id]->highindex || len <= 0) {
+    if ((unsigned long long)message < (unsigned long long)VM_ARENA_BASEADDR ||
+        (unsigned long long)message > processtable[running_process_id]->highindex - len + 1 ||
+        len <= 0) {
         return -1;
     }
 
+    string str;
+
     for (unsigned int i = 0; i < len; ++i) {
-        unsigned int vpnum = (vaddrin + i - (unsigned long)VM_ARENA_BASEADDR) / ((unsigned long)VM_PAGESIZE);
-        unsigned int offset = (vaddrin + i - (unsigned long)VM_ARENA_BASEADDR) % ((unsigned long)VM_PAGESIZE);
-        if (processtable[running_process_id]->page_table->ptes[vpnum].read_enable == 0) {
-            if (vm_fault((void*)(vaddrin + i), false ) == -1) {
+        unsigned int page_number = ((unsigned long long)message + i - (unsigned long)VM_ARENA_BASEADDR) / ((unsigned long)VM_PAGESIZE);
+        unsigned int page_offset = ((unsigned long long)message + i - (unsigned long)VM_ARENA_BASEADDR) % ((unsigned long)VM_PAGESIZE);
+        unsigned int physical_page = (unsigned int)(processtable[running_process_id]->page_table->ptes[page_number].ppage);
+
+        if (processtable[running_process_id]->page_table->ptes[page_number].read_enable == 0) {
+            if (vm_fault((void*)((unsigned long long)message + i), false) == -1) {
                 return -1;
             }
         }
 
-        unsigned int pnum = (unsigned int)(processtable[running_process_id]->page_table->ptes[vpnum].ppage);
-        str = str + ((char*)pm_physmem)[pnum * (unsigned long)VM_PAGESIZE + offset];
+        str = str + ((char*)pm_physmem)[physical_page * (unsigned long)VM_PAGESIZE + page_offset];
     }
 
     cout << "syslog \t\t\t" << str << endl;
