@@ -30,14 +30,14 @@ struct process {
 static queue<unsigned int> free_memory_pages;
 static queue<unsigned int> free_disk_blocks;
 
-static map<pid_t, process*> processtable;
+static map<pid_t, process*> process_map;
 static queue<page*> my_clock;
 
 static pid_t running_process_id;
-static unsigned int pagebase;
+static unsigned int page_base;
 
 void vm_init(unsigned int memory_pages, unsigned int disk_blocks) {
-    pagebase = (unsigned int)(((unsigned int)VM_ARENA_SIZE / (unsigned int)VM_PAGESIZE) + 1);
+    page_base = (unsigned int)(((unsigned int)VM_ARENA_SIZE / (unsigned int)VM_PAGESIZE) + 1);
 
     for (unsigned int i = 0; i < memory_pages; ++i) {
         free_memory_pages.push(i);
@@ -58,18 +58,18 @@ void vm_create(pid_t pid) {
 
     for (unsigned int i = 0; i < ptnum; ++i) {
         npte = &nprocess->page_table->ptes[i];
-        npte->ppage=pagebase;
+        npte->ppage = page_base;
         npte->read_enable = 0;
         npte->write_enable = 0;
     }
 
     nprocess->highindex = (unsigned long) VM_ARENA_BASEADDR;
-    processtable[pid] = nprocess;
+    process_map[pid] = nprocess;
 }
 
 void vm_switch(pid_t pid) {
     running_process_id = pid;
-    page_table_base_register = processtable[pid]->page_table;
+    page_table_base_register = process_map[pid]->page_table;
 }
 
 int vm_fault(void* addr, bool write_flag) {
@@ -77,14 +77,14 @@ int vm_fault(void* addr, bool write_flag) {
     unsigned int pageqindex = (unsigned int)((vaddrin - (unsigned long)VM_ARENA_BASEADDR) / (unsigned long)VM_PAGESIZE);
 
     //go beyond the range
-    if (vaddrin < (unsigned long)VM_ARENA_BASEADDR || vaddrin > processtable[running_process_id]->highindex) {
+    if (vaddrin < (unsigned long)VM_ARENA_BASEADDR || vaddrin > process_map[running_process_id]->highindex) {
         return -1;
     }
 
     page_table_entry_t *pte;
-    pte = &processtable[running_process_id]->page_table->ptes[pageqindex];
-    if (processtable[running_process_id]->pages[pageqindex]->resident != 0) {
-        page* respage = processtable[running_process_id]->pages[pageqindex];
+    pte = &process_map[running_process_id]->page_table->ptes[pageqindex];
+    if (process_map[running_process_id]->pages[pageqindex]->resident != 0) {
+        page* respage = process_map[running_process_id]->pages[pageqindex];
         if (!write_flag) {
             if (respage->dirty == 1) {
                 pte->write_enable = 1;
@@ -100,7 +100,7 @@ int vm_fault(void* addr, bool write_flag) {
         respage->reference = 1;
     }
     else {
-        page* np = processtable[running_process_id]->pages[pageqindex];
+        page* np = process_map[running_process_id]->pages[pageqindex];
         if (free_memory_pages.empty()) {
             page* clockp;
             long evict = 0;
@@ -108,7 +108,7 @@ int vm_fault(void* addr, bool write_flag) {
             while (evict == 0) {
                 clockp = my_clock.front();
                 my_clock.pop();
-                cte = &processtable[clockp->pid]->page_table->ptes[clockp->virtual_page];
+                cte = &process_map[clockp->pid]->page_table->ptes[clockp->virtual_page];
 
                 if (clockp->reference == 0) {
                     evict = 1;
@@ -127,14 +127,14 @@ int vm_fault(void* addr, bool write_flag) {
             }
 
             pte->ppage = cte->ppage;
-            cte->ppage = pagebase;
+            cte->ppage = page_base;
             clockp->resident = 0;
             if (np->valid == 1) {
-                unsigned long pagenum = processtable[running_process_id]->page_table->ptes[pageqindex].ppage;
+                unsigned long pagenum = process_map[running_process_id]->page_table->ptes[pageqindex].ppage;
                 disk_read(np->block_size, pagenum);
             }
             else {
-                unsigned long pagenum = processtable[running_process_id]->page_table->ptes[pageqindex].ppage;
+                unsigned long pagenum = process_map[running_process_id]->page_table->ptes[pageqindex].ppage;
                 memset((char *)pm_physmem+(pagenum)*(unsigned long)VM_PAGESIZE,0,(unsigned long)VM_PAGESIZE);
             }
 
@@ -153,11 +153,11 @@ int vm_fault(void* addr, bool write_flag) {
             free_memory_pages.pop();
 
             if (np->valid == 1) {
-                unsigned long pagenum = processtable[running_process_id]->page_table->ptes[pageqindex].ppage;
+                unsigned long pagenum = process_map[running_process_id]->page_table->ptes[pageqindex].ppage;
                 disk_read(np->block_size, pagenum);
             }
             else {
-                unsigned long pagenum = processtable[running_process_id]->page_table->ptes[pageqindex].ppage;
+                unsigned long pagenum = process_map[running_process_id]->page_table->ptes[pageqindex].ppage;
                 memset(((char*)pm_physmem + ((pagenum) * (unsigned long)VM_PAGESIZE)), 0, (unsigned long)VM_PAGESIZE);
             }
 
@@ -185,17 +185,17 @@ void vm_destroy() {
             my_clock.push(np);
         }
         else {
-            free_memory_pages.push(processtable[running_process_id]->page_table->ptes[np->virtual_page].ppage);
+            free_memory_pages.push(process_map[running_process_id]->page_table->ptes[np->virtual_page].ppage);
         }
     }
 
-    delete processtable[running_process_id]->page_table;
-    for (int i = 0; i < processtable[running_process_id]->pages.size(); ++i) {
-        free_disk_blocks.push(processtable[running_process_id]->pages[i]->block_size);
-        delete processtable[running_process_id]->pages[i];
+    delete process_map[running_process_id]->page_table;
+    for (int i = 0; i < process_map[running_process_id]->pages.size(); ++i) {
+        free_disk_blocks.push(process_map[running_process_id]->pages[i]->block_size);
+        delete process_map[running_process_id]->pages[i];
     }
 
-    delete processtable[running_process_id];
+    delete process_map[running_process_id];
 }
 
 void* vm_extend() {
@@ -205,12 +205,12 @@ void* vm_extend() {
         return nullptr;
     }
 
-    if (arenaaddr < processtable[running_process_id]->highindex + (unsigned long)VM_PAGESIZE) {
+    if (arenaaddr < process_map[running_process_id]->highindex + (unsigned long)VM_PAGESIZE) {
         return nullptr;
     }
 
-    if (processtable[running_process_id]->highindex != (unsigned long)VM_ARENA_BASEADDR) {
-        lowestbyte = processtable[running_process_id]->highindex + 1;
+    if (process_map[running_process_id]->highindex != (unsigned long)VM_ARENA_BASEADDR) {
+        lowestbyte = process_map[running_process_id]->highindex + 1;
     }
     else {
         lowestbyte = (unsigned long)VM_ARENA_BASEADDR;
@@ -228,14 +228,14 @@ void* vm_extend() {
     np->valid = 0;
 
     np->virtual_page = (unsigned int)(lowestbyte - (unsigned long)VM_ARENA_BASEADDR) / (unsigned long)VM_PAGESIZE;
-    processtable[running_process_id]->highindex = lowestbyte - 1 + (unsigned long)VM_PAGESIZE;
-    processtable[running_process_id]->pages.push_back(np);
+    process_map[running_process_id]->highindex = lowestbyte - 1 + (unsigned long)VM_PAGESIZE;
+    process_map[running_process_id]->pages.push_back(np);
     return (void*)(unsigned long*)lowestbyte;
 }
 
 int vm_syslog(void* message, unsigned int len) {
     if ((unsigned long long)message < (unsigned long long)VM_ARENA_BASEADDR ||
-        (unsigned long long)message > processtable[running_process_id]->highindex - len + 1 ||
+        (unsigned long long)message > process_map[running_process_id]->highindex - len + 1 ||
         len <= 0) {
         return -1;
     }
@@ -245,9 +245,9 @@ int vm_syslog(void* message, unsigned int len) {
     for (unsigned int i = 0; i < len; ++i) {
         unsigned int page_number = ((unsigned long long)message + i - (unsigned long)VM_ARENA_BASEADDR) / ((unsigned long)VM_PAGESIZE);
         unsigned int page_offset = ((unsigned long long)message + i - (unsigned long)VM_ARENA_BASEADDR) % ((unsigned long)VM_PAGESIZE);
-        unsigned int physical_page = (unsigned int)(processtable[running_process_id]->page_table->ptes[page_number].ppage);
+        unsigned int physical_page = (unsigned int)(process_map[running_process_id]->page_table->ptes[page_number].ppage);
 
-        if (processtable[running_process_id]->page_table->ptes[page_number].read_enable == 0) {
+        if (process_map[running_process_id]->page_table->ptes[page_number].read_enable == 0) {
             if (vm_fault((void*)((unsigned long long)message + i), false) == -1) {
                 return -1;
             }

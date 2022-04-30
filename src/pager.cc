@@ -249,8 +249,8 @@ int vm_syslog(void* message, unsigned int len) {
             physical_page = page_table_base_register->ptes[page_number].ppage;
         }
 
-        running_process_info->pages[page_number]->reference = true;
-        s.append((char*)pm_physmem + physical_page * VM_PAGESIZE + page_offset, 1);
+//        running_process_info->pages[page_number]->reference = true;
+        s += ((char*)pm_physmem)[physical_page * (unsigned long long)VM_PAGESIZE + page_offset];
     }
 
     cout << "syslog \t\t\t" << s << endl;
