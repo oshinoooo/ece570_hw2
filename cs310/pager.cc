@@ -245,7 +245,7 @@ int vm_syslog(void* message, unsigned int len) {
             }
         }
 
-        str = str + ((char*)pm_physmem)[physical_page * (unsigned long)VM_PAGESIZE + page_offset];
+        str += ((char*)pm_physmem)[physical_page * (unsigned long)VM_PAGESIZE + page_offset];
     }
 
     cout << "syslog \t\t\t" << str << endl;
